@@ -1,8 +1,15 @@
-import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
-import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
+import {
+  ThreeCanvas,
+  createAxesHelper,
+  createZUpGrid,
+  createZUpLights,
+  useSceneObject,
+  useThreeCanvas,
+} from '@/features/panels/common/threeCanvas';
+import { CANVAS_GL } from '@/features/panels/common/zUpSceneLayout';
 import { useRosViewTheme } from '@/features/viewer/RosViewProvider';
 import { scheduleFrame } from '@/shared/utils/rafScheduler';
 import {
@@ -21,10 +28,7 @@ import {
   type UrdfPreviewIssue,
 } from './previewStatus';
 
-const Z_UP = new THREE.Vector3(0, 0, 1);
-const GIZMO_MARGIN: [number, number] = [80, 80];
-const GIZMO_AXIS_COLORS: [string, string, string] = ['#ff3653', '#0adb46', '#2c8fff'];
-const CANVAS_CAMERA = {
+const PREVIEW_CAMERA = {
   position: [3, -3, 2] as [number, number, number],
   up: [0, 0, 1] as [number, number, number],
   fov: 45,
@@ -72,24 +76,48 @@ function getThemeColors(resolvedTheme: 'light' | 'dark'): ThemeColors {
   };
 }
 
-const CameraSetup: React.FC = () => {
-  const { camera, invalidate } = useThree();
-  useEffect(() => {
-    camera.up.copy(Z_UP);
-    camera.position.set(3, -3, 2);
-    camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
-    invalidate();
-  }, [camera, invalidate]);
-  return null;
-};
+const PreviewSceneChrome: React.FC<{
+  colors: ThemeColors;
+  showGrid: boolean;
+  showAxes: boolean;
+}> = ({ colors, showGrid, showAxes }) => {
+  const { scene, invalidate } = useThreeCanvas();
 
-const ZUpGrid: React.FC<{ colors: ThemeColors }> = ({ colors }) => {
-  const ref = useRef<THREE.GridHelper>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.rotation.x = -Math.PI / 2;
-  }, []);
-  return <gridHelper ref={ref} args={[10, 10, colors.gridPrimary, colors.gridSecondary]} />;
+  useLayoutEffect(() => {
+    const lights = createZUpLights({ preset: 'preview' });
+    scene.add(lights.object);
+
+    const grid = showGrid
+      ? createZUpGrid({
+          size: 10,
+          divisions: 10,
+          rotationX: -Math.PI / 2,
+          primary: colors.gridPrimary,
+          secondary: colors.gridSecondary,
+        })
+      : null;
+    if (grid) scene.add(grid.object);
+
+    const axes = showAxes ? createAxesHelper(1) : null;
+    if (axes) scene.add(axes.object);
+
+    invalidate();
+    return () => {
+      scene.remove(lights.object);
+      lights.dispose();
+      if (grid) {
+        scene.remove(grid.object);
+        grid.dispose();
+      }
+      if (axes) {
+        scene.remove(axes.object);
+        axes.dispose();
+      }
+      invalidate();
+    };
+  }, [colors.gridPrimary, colors.gridSecondary, invalidate, scene, showAxes, showGrid]);
+
+  return null;
 };
 
 interface RobotPreviewProps {
@@ -124,7 +152,7 @@ const RobotPreview: React.FC<RobotPreviewProps> = ({
   const cancelApplyFrameRef = useRef<(() => void) | null>(null);
   const buildIssuesRef = useRef<UrdfPreviewIssue[]>([]);
   const meshStatsRef = useRef({ total: 0, failed: 0 });
-  const { invalidate } = useThree();
+  const { invalidate } = useThreeCanvas();
 
   const applyRobotPose = useCallback(
     (model: RobotRenderable, updateWorldMatrix: boolean) => {
@@ -281,7 +309,8 @@ const RobotPreview: React.FC<RobotPreviewProps> = ({
     reportBuildResult,
   ]);
 
-  return robotModel ? <primitive object={robotModel.root} /> : null;
+  useSceneObject(robotModel?.root ?? null);
+  return null;
 };
 
 export interface UrdfDebugPreviewProps {
@@ -417,33 +446,28 @@ export const UrdfDebugPreview: React.FC<UrdfDebugPreviewProps> = ({
           </div>
         )}
       </div>
-      <Canvas shadows frameloop="demand" camera={CANVAS_CAMERA} gl={{ antialias: true }}>
-        <color attach="background" args={[colors.sceneBackground]} />
-        <CameraSetup />
-        <ambientLight intensity={0.45} />
-        <hemisphereLight args={['#ffffff', '#6b7280', 0.55]} />
-        <directionalLight position={[6, -4, 8]} intensity={1.05} />
-        {showGrid && <ZUpGrid colors={colors} />}
-        {showAxes && <axesHelper args={[1]} />}
-        <Suspense fallback={null}>
-          <RobotPreview
-            urdf={urdfText}
-            jointState={jointState}
-            highFrequencyPoseUpdates={highFrequencyPoseUpdates}
-            resolveMeshUrl={resolveMeshUrl}
-            fallbackMeshColor={fallbackMeshColor}
-            meshOutlineColor={colors.meshOutlineColor}
-            meshUpAxis={meshUpAxis}
-            onMeshLoadProgressChange={handleMeshProgress}
-            onMeshIssue={onMeshIssue}
-            onPreviewBuildResult={handlePreviewBuildResult}
-          />
-        </Suspense>
-        <OrbitControls makeDefault />
-        <GizmoHelper alignment="bottom-right" margin={GIZMO_MARGIN}>
-          <GizmoViewport axisColors={GIZMO_AXIS_COLORS} labelColor={colors.gizmoLabelColor} />
-        </GizmoHelper>
-      </Canvas>
+      <ThreeCanvas
+        shadows
+        gl={CANVAS_GL}
+        camera={PREVIEW_CAMERA}
+        autoFrameToGrid={false}
+        background={colors.sceneBackground}
+        gizmoLabelColor={colors.gizmoLabelColor}
+      >
+        <PreviewSceneChrome colors={colors} showGrid={showGrid} showAxes={showAxes} />
+        <RobotPreview
+          urdf={urdfText}
+          jointState={jointState}
+          highFrequencyPoseUpdates={highFrequencyPoseUpdates}
+          resolveMeshUrl={resolveMeshUrl}
+          fallbackMeshColor={fallbackMeshColor}
+          meshOutlineColor={colors.meshOutlineColor}
+          meshUpAxis={meshUpAxis}
+          onMeshLoadProgressChange={handleMeshProgress}
+          onMeshIssue={onMeshIssue}
+          onPreviewBuildResult={handlePreviewBuildResult}
+        />
+      </ThreeCanvas>
     </div>
   );
 };
