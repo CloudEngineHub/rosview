@@ -4,9 +4,14 @@ import {
   createThreeCanvasRuntime,
   type ThreeCanvasGlParams,
   type ThreeCanvasHandle,
+  type ThreeCanvasRuntime,
   type ThreeCanvasRuntimeOptions,
 } from './threeCanvasRuntime';
 import { ThreeCanvasContext, useThreeCanvas } from './threeCanvasContext';
+
+/** Same slot/classes as Pose/ThreeD HTML overlays (`scenePanelTheme` dark). */
+const WEBGL_UNAVAILABLE_OVERLAY_CLASS =
+  'pointer-events-none absolute left-2 top-2 z-10 rounded border px-2 py-1 text-[10px] bg-black/50 text-white border-white/10';
 
 export type ThreeCanvasProps = {
   className?: string;
@@ -49,6 +54,7 @@ export function ThreeCanvas({
 }: ThreeCanvasProps): ReactElement {
   const hostRef = useRef<HTMLDivElement>(null);
   const [handle, setHandle] = useState<ThreeCanvasHandle | null>(null);
+  const [glUnavailable, setGlUnavailable] = useState(false);
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -56,15 +62,24 @@ export function ThreeCanvas({
     const canvas = document.createElement('canvas');
     canvas.className = 'block h-full w-full';
     host.appendChild(canvas);
-    const runtime = createThreeCanvasRuntime({
-      canvas,
-      shadows,
-      gl,
-      camera,
-      autoFrameToGrid,
-      gizmoLabelColor,
-      createRenderer,
-    });
+    let runtime: ThreeCanvasRuntime | undefined;
+    try {
+      runtime = createThreeCanvasRuntime({
+        canvas,
+        shadows,
+        gl,
+        camera,
+        autoFrameToGrid,
+        gizmoLabelColor,
+        createRenderer,
+      });
+    } catch {
+      canvas.remove();
+      setHandle(null);
+      setGlUnavailable(true);
+      return;
+    }
+    setGlUnavailable(false);
     runtime.setBackground(background);
     runtime.setGizmoLabelColor(gizmoLabelColor);
 
@@ -112,6 +127,11 @@ export function ThreeCanvas({
       data-testid="three-canvas"
       className={`relative h-full w-full overflow-hidden ${className ?? ''}`}
     >
+      {glUnavailable ? (
+        <div className={WEBGL_UNAVAILABLE_OVERLAY_CLASS} data-testid="three-canvas-webgl-unavailable">
+          WebGL unavailable
+        </div>
+      ) : null}
       <ThreeCanvasContext.Provider value={handle}>{handle ? children : null}</ThreeCanvasContext.Provider>
     </div>
   );

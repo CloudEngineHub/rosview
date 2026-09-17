@@ -116,6 +116,8 @@ export type ThreeCanvasHandle = Pick<
 >;
 
 const MAX_FRAMES = 60;
+/** Demand-loop dt cap so an idle canvas does not snap the gizmo tween. */
+const MAX_DT_SECONDS = 1 / 30;
 const ORIGIN = new THREE.Vector3(0, 0, 0);
 
 let activeThreeCanvasRuntimes = 0;
@@ -208,7 +210,7 @@ export function createThreeCanvasRuntime(options: ThreeCanvasRuntimeOptions): Th
     }
 
     const now = performance.now();
-    const dt = (now - lastTickMs) / 1000;
+    const dt = Math.min(Math.max(0, (now - lastTickMs) / 1000), MAX_DT_SECONDS);
     lastTickMs = now;
     const moved = controls.enableDamping ? controls.update(dt) : false;
     gizmo.update(dt);

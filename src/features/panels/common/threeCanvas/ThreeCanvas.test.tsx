@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { act, StrictMode, useLayoutEffect } from 'react';
+import { act, StrictMode, useLayoutEffect, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -116,12 +116,48 @@ describe('ThreeCanvas', () => {
 
   it('does not mount children until the handle exists, then child layout runs', () => {
     const log: string[] = [];
+    const firstCommitChildLog: string[] = [];
     function Child() {
       log.push('child-render');
       useThreeCanvas();
       useLayoutEffect(() => {
         log.push('child-layout');
       }, []);
+      return null;
+    }
+    function FirstCommitProbe({ children }: { children: ReactNode }) {
+      useLayoutEffect(() => {
+        firstCommitChildLog.push(...log);
+      }, []);
+      return children;
+    }
+
+    act(() => {
+      root.render(
+        <FirstCommitProbe>
+          <ThreeCanvas
+            background="#111111"
+            gizmoLabelColor="#ffffff"
+            autoFrameToGrid={false}
+            createRenderer={(canvas) => createFakeRenderer(canvas)}
+          >
+            <Child />
+          </ThreeCanvas>
+        </FirstCommitProbe>,
+      );
+    });
+
+    expect(firstCommitChildLog).toEqual([]);
+    expect(log[0]).toBe('child-render');
+    expect(log).toContain('child-layout');
+    expect(container.querySelector('[data-testid="three-canvas"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="three-canvas"] canvas')).not.toBeNull();
+  });
+
+  it('shows a WebGL overlay and keeps children unmounted when the renderer fails', () => {
+    const log: string[] = [];
+    function Child() {
+      log.push('child-render');
       return null;
     }
 
@@ -131,17 +167,20 @@ describe('ThreeCanvas', () => {
           background="#111111"
           gizmoLabelColor="#ffffff"
           autoFrameToGrid={false}
-          createRenderer={(canvas) => createFakeRenderer(canvas)}
+          createRenderer={() => {
+            throw new Error('Error creating WebGL context');
+          }}
         >
           <Child />
         </ThreeCanvas>,
       );
     });
 
-    expect(log[0]).toBe('child-render');
-    expect(log).toContain('child-layout');
-    expect(container.querySelector('[data-testid="three-canvas"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="three-canvas"] canvas')).not.toBeNull();
+    expect(log).toEqual([]);
+    expect(container.querySelector('[data-testid="three-canvas-webgl-unavailable"]')?.textContent).toBe(
+      'WebGL unavailable',
+    );
+    expect(container.querySelector('[data-testid="three-canvas"] canvas')).toBeNull();
   });
 
   it('applies the themed background before the first renderer.render', () => {

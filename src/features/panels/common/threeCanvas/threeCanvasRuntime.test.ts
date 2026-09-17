@@ -200,16 +200,54 @@ describe('createThreeCanvasRuntime', () => {
     expect(mainRenderCount(runtime)).toBe(1);
   });
 
-  it('restores autoClear and scissor test after a gizmo overlay pass', () => {
+  it('restores autoClear, scissor test, and viewport/scissor after a gizmo overlay pass', () => {
     const { runtime, fake } = createRuntime();
     vi.spyOn(runtime.controls, 'update').mockReturnValue(false);
     runtime.setSize(320, 240);
+    const viewportBefore = fake.getViewport(new THREE.Vector4()).clone();
+    const scissorBefore = fake.getScissor(new THREE.Vector4()).clone();
     runtime.invalidate();
     flushOneRaf();
 
     expect(fake.autoClear).toBe(true);
     expect(fake.getScissorTest()).toBe(false);
+    expect(fake.getViewport(new THREE.Vector4()).toArray()).toEqual(viewportBefore.toArray());
+    expect(fake.getScissor(new THREE.Vector4()).toArray()).toEqual(scissorBefore.toArray());
+    expect(viewportBefore.toArray()).toEqual([0, 0, 320, 240]);
     expect(mainRenderCount(runtime)).toBe(1);
+  });
+
+  it('restores GL state if the gizmo overlay render throws', () => {
+    const { runtime, fake } = createRuntime();
+    vi.spyOn(runtime.controls, 'update').mockReturnValue(false);
+    runtime.setSize(320, 240);
+    const viewportBefore = fake.getViewport(new THREE.Vector4()).clone();
+    const scissorBefore = fake.getScissor(new THREE.Vector4()).clone();
+    const render = fake.render as ReturnType<typeof vi.fn>;
+    render.mockImplementation((scene: THREE.Object3D) => {
+      if (scene !== runtime.scene) {
+        throw new Error('overlay boom');
+      }
+    });
+    runtime.invalidate();
+    expect(() => flushOneRaf()).toThrow('overlay boom');
+    expect(fake.autoClear).toBe(true);
+    expect(fake.getScissorTest()).toBe(false);
+    expect(fake.getViewport(new THREE.Vector4()).toArray()).toEqual(viewportBefore.toArray());
+    expect(fake.getScissor(new THREE.Vector4()).toArray()).toEqual(scissorBefore.toArray());
+  });
+
+  it('clamps tick dt after a long idle so gizmo tween does not snap', () => {
+    let now = 1_000;
+    const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const { runtime } = createRuntime();
+    const update = vi.spyOn(runtime.controls, 'update').mockReturnValue(false);
+    runtime.setSize(100, 80);
+    now += 5_000;
+    runtime.invalidate();
+    flushOneRaf();
+    expect(update).toHaveBeenCalledWith(1 / 30);
+    nowSpy.mockRestore();
   });
 
   it('dispose is idempotent and loseContext calls forceContextLoss once', () => {

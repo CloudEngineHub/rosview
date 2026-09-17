@@ -77,11 +77,6 @@
     "react-dom": ">=19.2.0 <20",
     "three": ">=0.173.0"
   },
-  "peerDependenciesMeta": {
-    "three": {
-      "optional": false
-    }
-  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@foxglove/message-definition": "^0.5.0",

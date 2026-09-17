@@ -19,4 +19,8 @@ test('BVH sample loads and exposes skeleton topic in the sidebar', async ({ page
   await expect(canvasHost).toBeVisible();
   await expect(canvasHost.locator('canvas')).toHaveCount(1);
   expect(diagnostics.pageErrors, `page errors:\n${diagnostics.pageErrors.join('\n')}`).toEqual([]);
+  const glConsoleErrors = diagnostics.consoleErrors.filter((entry) =>
+    /WebGL|THREE|useTransition/i.test(entry),
+  );
+  expect(glConsoleErrors, `console errors:\n${glConsoleErrors.join('\n')}`).toEqual([]);
 });

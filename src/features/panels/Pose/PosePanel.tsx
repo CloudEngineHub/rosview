@@ -114,12 +114,15 @@ const BandLine: React.FC<{ band: TrajectoryLineBand; color: string }> = ({ band,
       opacity: 0.95,
       depthTest: true,
     });
+    // LineMaterial defaults resolution to (1, 1). Set from the live handle
+    // before useSceneObject invalidates so the first demand frame is not fat.
+    material.resolution.set(Math.max(1, handle.size.width), Math.max(1, handle.size.height));
     const line = new Line2(geometry, material);
     line.computeLineDistances();
     return line;
-  }, [band.points, band.width, color]);
+  }, [band.points, band.width, color, handle]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const material = lineObject.material;
     const syncResolution = (size: { width: number; height: number }) => {
       material.resolution.set(Math.max(1, size.width), Math.max(1, size.height));

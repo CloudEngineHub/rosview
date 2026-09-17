@@ -143,8 +143,14 @@ export function createViewportAxesGizmo(options: {
     return Math.min(requested, width, height);
   }
 
+  function setAnimating(next: boolean): void {
+    animating = next;
+    // Block OrbitControls for the tween so a leaked pointermove cannot fight rotateTowards.
+    controls.enabled = !next;
+  }
+
   function tweenCamera(direction: THREE.Vector3): void {
-    animating = true;
+    setAnimating(true);
     dummy.up.copy(camera.up);
     focusPoint.copy(controls.target);
     radius = camera.position.distanceTo(focusPoint);
@@ -180,7 +186,10 @@ export function createViewportAxesGizmo(options: {
     if (disposed || event.button !== 0 || animating) return;
     const direction = hitTest(event);
     if (!direction) return;
-    event.stopPropagation();
+    // Same canvas as OrbitControls.connect(); stopPropagation does not skip
+    // other listeners on this target. Capture + stopImmediatePropagation does.
+    event.stopImmediatePropagation();
+    event.preventDefault();
     tweenCamera(direction);
   };
 
@@ -213,7 +222,7 @@ export function createViewportAxesGizmo(options: {
     update(dt: number) {
       if (!animating || disposed) return;
       if (q1.angleTo(q2) < 0.01) {
-        animating = false;
+        setAnimating(false);
         camera.up.copy(Z_UP);
         dummy.up.copy(Z_UP);
         controls.update(dt);
@@ -238,26 +247,28 @@ export function createViewportAxesGizmo(options: {
       renderer.getViewport(savedViewport);
       renderer.getScissor(savedScissor);
 
-      const dim = overlayDim();
-      const x = width - dim;
-      const y = 0;
+      try {
+        const dim = overlayDim();
+        const x = width - dim;
+        const y = 0;
 
-      renderer.autoClear = false;
-      renderer.clearDepth();
-      renderer.setScissorTest(true);
-      renderer.setViewport(x, y, dim, dim);
-      renderer.setScissor(x, y, dim, dim);
-      renderer.render(scene, orthoCamera);
-
-      renderer.autoClear = savedAutoClear;
-      renderer.setViewport(savedViewport.x, savedViewport.y, savedViewport.z, savedViewport.w);
-      renderer.setScissor(savedScissor.x, savedScissor.y, savedScissor.z, savedScissor.w);
-      renderer.setScissorTest(savedScissorTest);
+        renderer.autoClear = false;
+        renderer.clearDepth();
+        renderer.setScissorTest(true);
+        renderer.setViewport(x, y, dim, dim);
+        renderer.setScissor(x, y, dim, dim);
+        renderer.render(scene, orthoCamera);
+      } finally {
+        renderer.autoClear = savedAutoClear;
+        renderer.setViewport(savedViewport.x, savedViewport.y, savedViewport.z, savedViewport.w);
+        renderer.setScissor(savedScissor.x, savedScissor.y, savedScissor.z, savedScissor.w);
+        renderer.setScissorTest(savedScissorTest);
+      }
     },
     dispose() {
       if (disposed) return;
       disposed = true;
-      animating = false;
+      setAnimating(false);
       canvas.removeEventListener('pointerdown', onPointerDown, true);
       boxGeometry.dispose();
       for (const material of axisMaterials) material.dispose();
