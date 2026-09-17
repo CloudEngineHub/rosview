@@ -84,7 +84,7 @@ npm run build        # 生产 SPA → dist/
 npm install @ioai/rosview
 ```
 
-> **Peer dependencies**：项目中需已安装 React **≥ 19.2**（含 19.3）、react-dom ≥ 19.2 以及 `three`（≥ 0.173）。`@react-three/fiber` 与 `@react-three/drei` 不再是 peer。若当初仅为 ROSView 安装它们，请卸载。若宿主自己的画布仍使用 React Three Fiber，请把 fiber/drei 留在**宿主**依赖中。
+> **Peer dependencies**：项目中需已安装 React **≥ 19.2**（含 19.3）、react-dom ≥ 19.2 以及 `three`（≥ 0.173）。`@react-three/fiber` 与 `@react-three/drei` 不再是 peer。若当初仅为 ROSView 安装它们，请卸载。若宿主自己的画布仍使用 React Three Fiber，请把 fiber/drei 留在**宿主**依赖中。其它运行时库已打进 `@ioai/rosview`，不要在宿主里再装一份。详见 [嵌入指南](docs/EMBEDDING.zh.md)。
 
 ### 引入样式表
 

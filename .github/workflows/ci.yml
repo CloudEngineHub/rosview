@@ -16,9 +16,11 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run build
       - run: npm run test
+      - run: npm run build:lib
 
   e2e:
     runs-on: ubuntu-latest

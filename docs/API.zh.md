@@ -4,7 +4,7 @@
 
 本文档描述 `@ioai/rosview` v1.2.0 的完整公开 API。
 
-在使用该包前，请先在宿主应用安装 peer 依赖：`react` 与 `react-dom` ≥ 19.2（含 19.3），以及 `three`。`@react-three/fiber` 与 `@react-three/drei` 不再需要。若当初仅为 ROSView 安装它们，请卸载；若宿主自己的画布仍使用 R3F，请把 fiber/drei 留在宿主依赖中。
+在使用该包前，请先在宿主应用安装 peer 依赖：`react` 与 `react-dom` ≥ 19.2（含 19.3），以及 `three`。`@react-three/fiber` 与 `@react-three/drei` 不再需要。若当初仅为 ROSView 安装它们，请卸载；若宿主自己的画布仍使用 R3F，请把 fiber/drei 留在宿主依赖中。其它运行时库已打进包内，不要在宿主里再装一份。详见 [EMBEDDING.zh.md](EMBEDDING.zh.md)。
 
 ---
 

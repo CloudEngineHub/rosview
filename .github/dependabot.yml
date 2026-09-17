@@ -6,10 +6,59 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      production-deps:
-        dependency-type: production
-      development-deps:
-        dependency-type: development
+      # First match wins. All runtime libraries live in devDependencies because
+      # the published package is pre-bundled; group by role, not by npm
+      # production vs development (the production group would be empty).
+      # Majors are ungrouped so dockview 8 / Tailwind 4 / TypeScript 7 land as
+      # individual reviewable PRs instead of one failing bulk update.
+      peer-and-types:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "three"
+          - "@types/three"
+      bundled-runtime:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "@foxglove/*"
+          - "@mcap/*"
+          - "@ioai/*"
+          - "@radix-ui/*"
+          - "dockview*"
+          - "sql.js"
+          - "@types/sql.js"
+          - "protobufjs"
+          - "fflate"
+          - "lz4js"
+          - "zustand"
+          - "react-intl"
+          - "uplot"
+          - "cytoscape"
+          - "@types/cytoscape"
+          - "comlink"
+          - "class-variance-authority"
+          - "clsx"
+          - "tailwind-merge"
+          - "lucide-react"
+          - "cmdk"
+          - "eventemitter3"
+          - "flatbuffers"
+          - "intervals-fn"
+          - "sonner"
+          - "react-resizable-panels"
+      toolchain:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: /

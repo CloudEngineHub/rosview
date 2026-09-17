@@ -17,8 +17,33 @@ Include as much detail as you can: affected version, reproduction steps, impact,
 
 We aim to acknowledge reports within a few business days and will coordinate a fix and disclosure timeline with you.
 
+## Dependency model (published package)
+
+`@ioai/rosview` is a **pre-bundled** ESM component. The npm tarball contains `dist-lib/` only.
+
+| Kind | Packages | Who installs them | Security meaning |
+|---|---|---|---|
+| **Peer dependencies** | `react`, `react-dom`, `three` | The host app (required) | Host lockfile / their upgrades. We keep these external so the host has a single React and a single `three`. |
+| **Bundled runtime** | Foxglove/MCAP codecs, Dockview, Radix, `sql.js`, `js-yaml` (via `@foxglove/rosbag2`), `protobufjs`, `fflate` (direct), etc. | **Nobody extra** — compiled into `dist-lib` | Advisories in these packages are **runtime** for the SPA and for embedders. They do **not** appear in the host `npm ls` graph. A fix ships only when we rebuild and publish. |
+| **Toolchain** | Vite, ESLint, TypeScript, Playwright, Autoprefixer, api-extractor, … | Maintainers and CI | Affects this repo’s install and builds, not the published widget, unless a tool is accidentally bundled. |
+
+Consequences:
+
+- `npm audit --omit=dev` on **this** repository is not a product-security signal: there are no `dependencies`, so the command is always empty.
+- Audit the full lockfile (`npm audit`). CI fails on high/critical findings (`npm audit --audit-level=high`).
+- Do **not** move bundled libraries into `dependencies` to make Dependabot treat them as production. That would install a second copy in every host app and is the usual way a fat UI widget breaks downstream lockfiles.
+- Hosts should not add Dockview, MCAP, Foxglove, Radix, or similar “so rosview works”; those are already inside the bundle.
+
+## Overrides
+
+npm applies `overrides` only from the **root** project. Ours do not leak into embedder lockfiles.
+
+- `@foxglove/rosmsg`: `^5.0.5` — `@foxglove/rosbag@0.4.1` declares `rosmsg ^4`; the rest of the tree uses rosmsg 5. The override keeps a single parser in the library/SPA build.
+
+Prefer a parent-range update (`npm update <nested-pkg>`) over a new override. Add an override only when a parent’s semver range cannot reach a patched release. Do not use a global override that would hoist a nested package across a major (for example do not force `three-stdlib`’s `fflate@^0.6` onto `0.8`).
+
 ## Dependency vulnerabilities
 
-This repository uses Dependabot for npm and GitHub Actions updates. Runtime impact of `npm audit` findings in **devDependencies** (lint, test, and library packaging tools) is typically limited to maintainer machines and CI; still, high/critical issues in the toolchain are fixed by upgrading or removing the affected packages when practical.
+This repository uses Dependabot for npm and GitHub Actions updates, grouped as peer stack, bundled runtime, and toolchain so a compiler bump cannot block a codec patch.
 
-We avoid broad `npm overrides` for security patches when a direct dependency upgrade or removing unused tooling is sufficient.
+High/critical issues are fixed by upgrading the affected package when the parent range allows it, or with a narrow override when it does not. Toolchain-only findings that cannot be reached without an unsafe major bump may be waived in this file with the advisory id and the reason.
