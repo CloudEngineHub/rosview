@@ -85,7 +85,7 @@ npm run build        # production SPA → dist/
 npm install @ioai/rosview
 ```
 
-> **Peer dependencies**: React ≥ 19, react-dom ≥ 19, three, @react-three/fiber, and @react-three/drei must already be installed in your project.
+> **Peer dependencies**: React **≥ 19.2** (including 19.3) and react-dom ≥ 19.2, plus `three` (≥ 0.173). `@react-three/fiber` and `@react-three/drei` are no longer required. If you installed them only for ROSView, uninstall them. Keep them as **host** dependencies if your app still uses React Three Fiber for its own canvases.
 
 ### Import the stylesheet
 

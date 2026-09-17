@@ -19,11 +19,10 @@ import { fileURLToPath } from 'node:url';
 /** Directory containing this config file (avoids `process.cwd()` so entry paths stay stable). */
 const packageDir = path.dirname(fileURLToPath(import.meta.url));
 
-/** Keep React Three Fiber + three outside the library ESM chunk so Next.js (Turbopack) can transpile them. */
+/** Keep React and three outside the library ESM chunk so the host supplies a single copy. */
 function libExternal(id: string): boolean {
   if (id === 'react' || id === 'react-dom' || id === 'react/jsx-runtime') return true;
   if (id === 'three' || id.startsWith('three/')) return true;
-  if (id.startsWith('@react-three/')) return true;
   return false;
 }
 

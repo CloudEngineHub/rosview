@@ -1,6 +1,6 @@
 {
   "name": "@ioai/rosview",
-  "version": "1.8.2",
+  "version": "2.0.0",
   "description": "High-performance robotics data visualization for MCAP, ROS bag, ROS2 db3, HDF5 and BVH — embeddable React component and standalone SPA",
   "keywords": [
     "ros",
@@ -57,7 +57,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:lib": "tsc -b && vite build --config vite.lib.config.ts && npm run build:lib:types",
+    "build:lib": "tsc -b && vite build --config vite.lib.config.ts && npm run build:lib:types && node scripts/check-lib-externals.mjs",
     "build:lib:types": "tsc -p tsconfig.lib.json --emitDeclarationOnly && api-extractor run -c api-extractor.rosview.json --local && api-extractor run -c api-extractor.urdf-preview.json --local",
     "typecheck": "tsc -b --noEmit",
     "prepublishOnly": "npm run lint && npm test && npm run build:lib",
@@ -73,22 +73,9 @@
     "perf:compare": "node scripts/compare-playback-perf.mjs"
   },
   "peerDependencies": {
-    "@react-three/drei": "^10.0.0",
-    "@react-three/fiber": "^9.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": ">=19.2.0 <20",
+    "react-dom": ">=19.2.0 <20",
     "three": ">=0.173.0"
-  },
-  "peerDependenciesMeta": {
-    "@react-three/drei": {
-      "optional": false
-    },
-    "@react-three/fiber": {
-      "optional": false
-    },
-    "three": {
-      "optional": false
-    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -117,8 +104,6 @@
     "@radix-ui/react-slider": "^1.4.7",
     "@radix-ui/react-slot": "^1.3.3",
     "@radix-ui/react-tabs": "^1.1.21",
-    "@react-three/drei": "^10.7.8",
-    "@react-three/fiber": "^9.7.0",
     "@types/cytoscape": "^3.21.9",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",

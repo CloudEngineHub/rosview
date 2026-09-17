@@ -4,7 +4,7 @@
 
 This document covers the complete public API of `@ioai/rosview` v1.2.0.
 
-Before using this package, install peer dependencies in your host app: `react`, `react-dom`, `three`, `@react-three/fiber`, and `@react-three/drei`.
+Before using this package, install peer dependencies in your host app: `react` and `react-dom` ≥ 19.2 (including 19.3), and `three`. `@react-three/fiber` and `@react-three/drei` are not required. Uninstall them if they were added only for ROSView; keep them as host dependencies if your app still uses R3F for its own canvases.
 
 ---
 
