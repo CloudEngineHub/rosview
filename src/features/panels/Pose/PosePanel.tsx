@@ -1,5 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { resolveEventTimestamp, timeToSec } from '@/core/analysis/timeSeries';
 import { messageBus } from '@/core/pipeline/messageBus';
 import { useMessagePipeline } from '@/core/pipeline/useMessagePipeline';
@@ -9,12 +8,18 @@ import {
   readPoseStampedOrientation,
   readPoseStampedPosition3,
 } from '@/features/panels/common/poseExtractors';
-import { getScenePanelThemeColors } from '@/features/panels/common/scenePanelTheme';
 import {
-  R3fZUpGizmoLayer,
-  SceneBackgroundLayer,
-  ZUpCameraSetup,
-} from '@/features/panels/common/r3fZUpSceneChrome';
+  getScenePanelThemeColors,
+  type ScenePanelThemeColors,
+} from '@/features/panels/common/scenePanelTheme';
+import {
+  ThreeCanvas,
+  createAxesHelper,
+  createZUpGrid,
+  createZUpLights,
+  useSceneObject,
+  useThreeCanvas,
+} from '@/features/panels/common/threeCanvas';
 import {
   CANVAS_CAMERA,
   CANVAS_GL,
@@ -57,17 +62,48 @@ function isPoseStampedType(typeName: string): boolean {
   return normalized === 'geometry_msgs/msg/posestamped' || normalized === 'geometry_msgs/posestamped';
 }
 
-/** Re-request a frame when topic visibility or trail data changes (`frameloop="demand"`). */
+/** Re-request a frame when topic visibility or trail data changes (demand loop). */
 const PoseDemandInvalidate: React.FC<{ signature: string }> = ({ signature }) => {
-  const { invalidate } = useThree();
+  const handle = useThreeCanvas();
   useEffect(() => {
+    handle.invalidate();
+  }, [handle, signature]);
+  return null;
+};
+
+const PoseSceneChrome: React.FC<{ colors: ScenePanelThemeColors }> = ({ colors }) => {
+  const { scene, invalidate } = useThreeCanvas();
+
+  useLayoutEffect(() => {
+    const lights = createZUpLights({ preset: 'full', colors });
+    const grid = createZUpGrid({
+      size: DEFAULT_GRID_SIZE,
+      divisions: DEFAULT_GRID_DIVISIONS,
+      rotationX: Math.PI / 2,
+      primary: colors.gridPrimary,
+      secondary: colors.gridSecondary,
+    });
+    const axes = createAxesHelper(1);
+    scene.add(lights.object);
+    scene.add(grid.object);
+    scene.add(axes.object);
     invalidate();
-  }, [invalidate, signature]);
+    return () => {
+      scene.remove(lights.object);
+      scene.remove(grid.object);
+      scene.remove(axes.object);
+      lights.dispose();
+      grid.dispose();
+      axes.dispose();
+      invalidate();
+    };
+  }, [colors, invalidate, scene]);
+
   return null;
 };
 
 const BandLine: React.FC<{ band: TrajectoryLineBand; color: string }> = ({ band, color }) => {
-  const { size } = useThree();
+  const handle = useThreeCanvas();
   const lineObject = useMemo(() => {
     const geometry = new LineGeometry();
     geometry.setPositions(band.points.flat());
@@ -78,29 +114,30 @@ const BandLine: React.FC<{ band: TrajectoryLineBand; color: string }> = ({ band,
       opacity: 0.95,
       depthTest: true,
     });
-    material.resolution.set(Math.max(1, size.width), Math.max(1, size.height));
     const line = new Line2(geometry, material);
     line.computeLineDistances();
     return line;
-  }, [band.points, band.width, color, size.height, size.width]);
+  }, [band.points, band.width, color]);
+
+  useEffect(() => {
+    const material = lineObject.material;
+    const syncResolution = (size: { width: number; height: number }) => {
+      material.resolution.set(Math.max(1, size.width), Math.max(1, size.height));
+    };
+    syncResolution(handle.size);
+    return handle.onResize(syncResolution);
+  }, [handle, lineObject]);
 
   useEffect(
     () => () => {
-      const object = lineObject as THREE.Object3D & {
-        geometry?: THREE.BufferGeometry;
-        material?: THREE.Material | THREE.Material[];
-      };
-      object.geometry?.dispose();
-      if (Array.isArray(object.material)) {
-        object.material.forEach((material) => material.dispose());
-      } else {
-        object.material?.dispose();
-      }
+      lineObject.geometry.dispose();
+      lineObject.material.dispose();
     },
     [lineObject],
   );
 
-  return <primitive object={lineObject} />;
+  useSceneObject(lineObject);
+  return null;
 };
 
 const PoseTrail: React.FC<{ track: PoseTrack; minLineWidth: number; maxLineWidth: number }> = ({
@@ -123,30 +160,58 @@ const PoseTrail: React.FC<{ track: PoseTrack; minLineWidth: number; maxLineWidth
   );
 };
 
+const SHARED_POSE_SPHERE_GEOMETRY = new THREE.SphereGeometry(1, 12, 8);
+
 const PoseAxes: React.FC<{ sample: PoseSample; scale: number; color: string }> = ({
   sample,
   scale,
   color,
 }) => {
-  const quaternion = useMemo(
-    () =>
-      new THREE.Quaternion(
-        sample.orientation[0],
-        sample.orientation[1],
-        sample.orientation[2],
-        sample.orientation[3],
-      ),
-    [sample.orientation],
+  const { invalidate } = useThreeCanvas();
+  const group = useMemo(() => {
+    const root = new THREE.Group();
+    root.add(new THREE.AxesHelper(scale));
+    const mesh = new THREE.Mesh(
+      SHARED_POSE_SPHERE_GEOMETRY,
+      new THREE.MeshStandardMaterial({ color }),
+    );
+    mesh.scale.setScalar(Math.max(scale * 0.12, 0.01));
+    root.add(mesh);
+    return root;
+  }, [color, scale]);
+
+  useLayoutEffect(() => {
+    group.position.set(sample.position[0], sample.position[1], sample.position[2]);
+    group.quaternion.set(
+      sample.orientation[0],
+      sample.orientation[1],
+      sample.orientation[2],
+      sample.orientation[3],
+    );
+    invalidate();
+  }, [group, invalidate, sample.orientation, sample.position]);
+
+  useEffect(
+    () => () => {
+      group.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (mesh.geometry && mesh.geometry !== SHARED_POSE_SPHERE_GEOMETRY) {
+          mesh.geometry.dispose();
+        }
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (!material) return;
+        if (Array.isArray(material)) {
+          material.forEach((entry) => entry.dispose());
+        } else {
+          material.dispose();
+        }
+      });
+    },
+    [group],
   );
-  return (
-    <group position={sample.position} quaternion={quaternion}>
-      <axesHelper args={[scale]} />
-      <mesh>
-        <sphereGeometry args={[Math.max(scale * 0.12, 0.01), 12, 8]} />
-        <meshStandardMaterial color={color} />
-      </mesh>
-    </group>
-  );
+
+  useSceneObject(group);
+  return null;
 };
 
 export const PosePanel: React.FC<PosePanelProps> = ({ player, panelId, config }) => {
@@ -420,43 +485,33 @@ export const PosePanel: React.FC<PosePanelProps> = ({ player, panelId, config })
           ))}
         </div>
       )}
-      <Canvas shadows frameloop="demand" camera={CANVAS_CAMERA} gl={CANVAS_GL}>
-        <Suspense fallback={null}>
-          <SceneBackgroundLayer background={colors.sceneBackground} />
-          <ZUpCameraSetup />
-          <PoseDemandInvalidate signature={demandInvalidateSignature} />
-          <ambientLight intensity={colors.ambientLightIntensity} />
-          <hemisphereLight args={['#ffffff', '#6b7280', colors.hemisphereLightIntensity]} />
-          <directionalLight position={[6, -4, 8]} intensity={colors.keyLightIntensity} />
-          <directionalLight position={[-6, 4, 5]} intensity={colors.fillLightIntensity} />
-          <directionalLight position={[-2, -7, 6]} intensity={colors.rimLightIntensity} />
-          <group position={[0, 0, 0]}>
-            <gridHelper
-              rotation={[Math.PI / 2, 0, 0]}
-              args={[DEFAULT_GRID_SIZE, DEFAULT_GRID_DIVISIONS, colors.gridPrimary, colors.gridSecondary]}
-            />
-          </group>
-          <axesHelper args={[1]} />
-          {tracks.map((track) => (
-            <PoseTrail
-              key={track.topic}
-              track={track}
-              minLineWidth={config.minLineWidth}
-              maxLineWidth={config.maxLineWidth}
+      <ThreeCanvas
+        shadows
+        gl={CANVAS_GL}
+        camera={CANVAS_CAMERA}
+        background={colors.sceneBackground}
+        gizmoLabelColor={colors.gizmoLabelColor}
+      >
+        <PoseSceneChrome colors={colors} />
+        <PoseDemandInvalidate signature={demandInvalidateSignature} />
+        {tracks.map((track) => (
+          <PoseTrail
+            key={track.topic}
+            track={track}
+            minLineWidth={config.minLineWidth}
+            maxLineWidth={config.maxLineWidth}
+          />
+        ))}
+        {config.showOrientation &&
+          latestSamples.map((entry) => (
+            <PoseAxes
+              key={`${entry.topic}:axes`}
+              sample={entry.sample}
+              scale={config.orientationScale}
+              color={entry.color}
             />
           ))}
-          {config.showOrientation &&
-            latestSamples.map((entry) => (
-              <PoseAxes
-                key={`${entry.topic}:axes`}
-                sample={entry.sample}
-                scale={config.orientationScale}
-                color={entry.color}
-              />
-            ))}
-          <R3fZUpGizmoLayer labelColor={colors.gizmoLabelColor} />
-        </Suspense>
-      </Canvas>
+      </ThreeCanvas>
     </div>
   );
 };
