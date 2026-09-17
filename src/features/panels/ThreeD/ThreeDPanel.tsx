@@ -1,5 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Player } from '@/core/types/player';
 import type { Time, TopicInfo } from '@/core/types/ros';
 import type { MessagePipelineState } from '@/core/pipeline/store';
@@ -17,10 +16,13 @@ import type {
 import { transformBvhPointToScene } from '@/shared/bvh/coordinates';
 import { getScenePanelThemeColors, type ScenePanelThemeColors } from '@/features/panels/common/scenePanelTheme';
 import {
-  R3fZUpGizmoLayer,
-  SceneBackgroundLayer,
-  ZUpCameraSetup,
-} from '@/features/panels/common/r3fZUpSceneChrome';
+  ThreeCanvas,
+  createAxesHelper,
+  createZUpGrid,
+  createZUpLights,
+  useSceneObject,
+  useThreeCanvas,
+} from '@/features/panels/common/threeCanvas';
 import {
   CANVAS_CAMERA,
   CANVAS_GL,
@@ -32,7 +34,6 @@ import {
 } from '@/features/panels/common/zUpSceneLayout';
 import { extractPathPoints3, readPoseStampedPosition3 } from '@/features/panels/common/poseExtractors';
 import * as THREE from 'three';
-import { OrbitControls as ThreeOrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { useRosViewTheme } from '@/features/viewer/RosViewProvider';
 
 import {
@@ -200,7 +201,7 @@ const BvhSceneAutoFit: React.FC<{
   resetVersion: number;
   onGroundLayout?: (layout: BvhGroundLayoutState) => void;
 }> = ({ bvhTopic, skeletonPrimitives, resetVersion, onGroundLayout }) => {
-  const { camera, controls, invalidate } = useThree();
+  const { camera, controls, invalidate } = useThreeCanvas();
   const fittedForResetRef = useRef<number | null>(null);
   const accumulatedBoundsRef = useRef<THREE.Box3 | null>(null);
   const lastGroundLayoutRef = useRef<BvhGroundLayoutState | null>(null);
@@ -264,17 +265,12 @@ const BvhSceneAutoFit: React.FC<{
     let shouldInvalidate = false;
     if (needsInitialFit) {
       fittedForResetRef.current = resetVersion;
-      const persp = camera as THREE.PerspectiveCamera;
       const xySpan = Math.max(size.x, size.y, 2);
       const gridSize = Math.max(DEFAULT_GRID_SIZE, Math.ceil(xySpan * 1.6));
       const gridCenter = new THREE.Vector3(center.x, center.y, 0);
-      framePerspectiveCameraToGrid(persp, gridCenter, gridSize);
-
-      const oc = controls as ThreeOrbitControls | null;
-      if (oc) {
-        oc.target.copy(gridCenter);
-        oc.update();
-      }
+      framePerspectiveCameraToGrid(camera, gridCenter, gridSize);
+      controls.target.copy(gridCenter);
+      controls.update();
       shouldInvalidate = true;
     }
 
@@ -299,30 +295,6 @@ const BvhSceneAutoFit: React.FC<{
   return null;
 };
 
-/**
- * A flat grid on the XY plane (ground in Z-up convention).
- */
-type ZUpGridProps = {
-  colors: ThemeColors;
-  /** Full width/height of the grid in scene units (GridHelper `size`). */
-  size?: number;
-  divisions?: number;
-  position?: [number, number, number];
-};
-
-const ZUpGrid: React.FC<ZUpGridProps> = ({
-  colors,
-  size = DEFAULT_GRID_SIZE,
-  divisions = DEFAULT_GRID_DIVISIONS,
-  position = [0, 0, 0],
-}) => {
-  return (
-    <group position={position}>
-      <gridHelper rotation={[Math.PI / 2, 0, 0]} args={[size, divisions, colors.gridPrimary, colors.gridSecondary]} />
-    </group>
-  );
-};
-
 // ── Point cloud ────────────────────────────────────────────────────
 // Geometry/attributes are reused across frames when the point count is
 // unchanged. Rebuilding BufferGeometry every message forced Three.js to
@@ -340,6 +312,45 @@ type PointCloudGpuState = {
 function disposePointCloudGpu(state: PointCloudGpuState | null): void {
   if (!state) return;
   state.geometry.dispose();
+}
+
+function createFrustumCulledOffPoints(
+  geometry: THREE.BufferGeometry,
+  params: { size: number; color: string; vertexColors: boolean },
+): THREE.Points {
+  const material = new THREE.PointsMaterial({
+    size: params.size,
+    sizeAttenuation: true,
+    vertexColors: params.vertexColors,
+    color: params.vertexColors ? '#ffffff' : params.color,
+  });
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+  return points;
+}
+
+function applyPointsMaterial(
+  points: THREE.Points,
+  params: { size: number; color: string; vertexColors: boolean },
+): void {
+  const material = points.material as THREE.PointsMaterial;
+  material.size = params.size;
+  material.sizeAttenuation = true;
+  if (material.vertexColors !== params.vertexColors) {
+    material.vertexColors = params.vertexColors;
+    material.needsUpdate = true;
+  }
+  material.color.set(params.vertexColors ? '#ffffff' : params.color);
+}
+
+function disposePointsMaterial(points: THREE.Points | null): void {
+  if (!points) return;
+  const { material } = points;
+  if (Array.isArray(material)) {
+    for (const entry of material) entry.dispose();
+  } else {
+    material.dispose();
+  }
 }
 
 function safeComputeBoundingSphere(geometry: THREE.BufferGeometry): void {
@@ -427,36 +438,37 @@ function applyPointCloudData(
 /** Low-frequency clouds (LaserScan / OccupancyGrid) that arrive via React props. */
 const PointCloud = ({ data, color, size }: { data: PointCloudData; color: string; size: number }) => {
   const gpuRef = useRef<PointCloudGpuState | null>(null);
-  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
-  const [hasVertexColors, setHasVertexColors] = useState(false);
-  const { invalidate } = useThree();
+  const pointsRef = useRef<THREE.Points | null>(null);
+  const [pointsObject, setPointsObject] = useState<THREE.Points | null>(null);
+  const { invalidate } = useThreeCanvas();
 
   useEffect(() => {
     const next = applyPointCloudData(gpuRef.current, data);
     gpuRef.current = next;
-    setGeometry(next.geometry);
-    setHasVertexColors(next.color != null);
+    const vertexColors = next.color != null;
+    let points = pointsRef.current;
+    if (!points) {
+      points = createFrustumCulledOffPoints(next.geometry, { size, color, vertexColors });
+      pointsRef.current = points;
+      setPointsObject(points);
+    } else {
+      points.geometry = next.geometry;
+      applyPointsMaterial(points, { size, color, vertexColors });
+    }
     invalidate();
-  }, [data, invalidate]);
+  }, [color, data, invalidate, size]);
 
   useEffect(() => {
     return () => {
       disposePointCloudGpu(gpuRef.current);
       gpuRef.current = null;
+      disposePointsMaterial(pointsRef.current);
+      pointsRef.current = null;
     };
   }, []);
 
-  if (!geometry) return null;
-  return (
-    <points geometry={geometry} frustumCulled={false}>
-      <pointsMaterial
-        size={size}
-        color={hasVertexColors ? '#ffffff' : color}
-        vertexColors={hasVertexColors}
-        sizeAttenuation={true}
-      />
-    </points>
-  );
+  useSceneObject(pointsObject);
+  return null;
 };
 
 /**
@@ -478,14 +490,14 @@ const LivePointCloudLayer = ({
   size: number;
 }) => {
   const gpuRef = useRef<PointCloudGpuState | null>(null);
-  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
-  const [hasVertexColors, setHasVertexColors] = useState(false);
-  const { invalidate, camera, controls } = useThree();
+  const pointsRef = useRef<THREE.Points | null>(null);
+  const [pointsObject, setPointsObject] = useState<THREE.Points | null>(null);
+  const { invalidate, camera, controls } = useThreeCanvas();
   const cameraRef = useRef(camera);
   const controlsRef = useRef(controls);
   const invalidateRef = useRef(invalidate);
-  const geometryIdentityRef = useRef<THREE.BufferGeometry | null>(null);
-  const hasColorsRef = useRef(false);
+  const sizeRef = useRef(size);
+  const colorRef = useRef(color);
   const workerRef = useRef<Worker | null>(null);
   const nextIdRef = useRef(1);
   const inflightIdRef = useRef<number | null>(null);
@@ -499,8 +511,24 @@ const LivePointCloudLayer = ({
   }, [camera, controls, invalidate]);
 
   useEffect(() => {
+    sizeRef.current = size;
+    colorRef.current = color;
+  }, [color, size]);
+
+  useEffect(() => {
     didAutofitRef.current = false;
   }, [topic]);
+
+  useEffect(() => {
+    const points = pointsRef.current;
+    if (!points) return;
+    applyPointsMaterial(points, {
+      size,
+      color,
+      vertexColors: (points.material as THREE.PointsMaterial).vertexColors,
+    });
+    invalidate();
+  }, [color, invalidate, size]);
 
   useEffect(() => {
     const worker = new PointCloudParseWorkerClass();
@@ -518,11 +546,9 @@ const LivePointCloudLayer = ({
       );
       if (box.isEmpty()) return;
       const target = framePerspectiveCameraToBox(cam, box);
-      const oc = controlsRef.current as ThreeOrbitControls | null;
-      if (oc) {
-        oc.target.copy(target);
-        oc.update();
-      }
+      const oc = controlsRef.current;
+      oc.target.copy(target);
+      oc.update();
       didAutofitRef.current = true;
     };
 
@@ -541,13 +567,23 @@ const LivePointCloudLayer = ({
       };
       const next = applyPointCloudData(gpuRef.current, parsed);
       gpuRef.current = next;
-      const colorsChanged = (next.color != null) !== hasColorsRef.current;
-      const geometryChanged = next.geometry !== geometryIdentityRef.current;
-      if (geometryChanged || colorsChanged) {
-        geometryIdentityRef.current = next.geometry;
-        hasColorsRef.current = next.color != null;
-        setGeometry(next.geometry);
-        setHasVertexColors(next.color != null);
+      const vertexColors = next.color != null;
+      let points = pointsRef.current;
+      if (!points) {
+        points = createFrustumCulledOffPoints(next.geometry, {
+          size: sizeRef.current,
+          color: colorRef.current,
+          vertexColors,
+        });
+        pointsRef.current = points;
+        setPointsObject(points);
+      } else {
+        points.geometry = next.geometry;
+        applyPointsMaterial(points, {
+          size: sizeRef.current,
+          color: colorRef.current,
+          vertexColors,
+        });
       }
       autofitOnce(next.geometry);
       invalidateRef.current();
@@ -654,24 +690,14 @@ const LivePointCloudLayer = ({
       inflightIdRef.current = null;
       disposePointCloudGpu(gpuRef.current);
       gpuRef.current = null;
-      geometryIdentityRef.current = null;
-      hasColorsRef.current = false;
-      setGeometry(null);
-      setHasVertexColors(false);
+      disposePointsMaterial(pointsRef.current);
+      pointsRef.current = null;
+      setPointsObject(null);
     };
   }, [player, panelId, topic]);
 
-  if (!geometry) return null;
-  return (
-    <points geometry={geometry} frustumCulled={false}>
-      <pointsMaterial
-        size={size}
-        color={hasVertexColors ? '#ffffff' : color}
-        vertexColors={hasVertexColors}
-        sizeAttenuation={true}
-      />
-    </points>
-  );
+  useSceneObject(pointsObject);
+  return null;
 };
 
 type Simple3DTrack = {
@@ -707,41 +733,42 @@ export type MarkerPrimitive =
       color: string;
     };
 
-function disposeLineMaterials(line: THREE.Line): void {
-  const { material } = line;
-  if (Array.isArray(material)) {
-    for (const m of material) {
-      m.dispose();
-    }
-  } else {
-    material.dispose();
-  }
-}
-
 const TrackLine: React.FC<{ track: Simple3DTrack }> = ({ track }) => {
-  const lineObject = useMemo(() => {
+  const object = useMemo((): THREE.Object3D | null => {
+    if (track.points.length === 0) return null;
+    if (track.mode === 'pose') {
+      const latest = track.points[track.points.length - 1];
+      if (!latest) return null;
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 16, 12),
+        new THREE.MeshStandardMaterial({ color: track.color }),
+      );
+      mesh.position.set(latest[0], latest[1], latest[2]);
+      return mesh;
+    }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(track.points.flat(), 3));
     return new THREE.Line(geo, new THREE.LineBasicMaterial({ color: track.color }));
-  }, [track.points, track.color]);
+  }, [track.color, track.mode, track.points]);
+
   useEffect(
     () => () => {
-      lineObject.geometry.dispose();
-      disposeLineMaterials(lineObject);
+      if (!object) return;
+      const disposable = object as THREE.Mesh;
+      if (disposable.geometry) disposable.geometry.dispose();
+      const material = disposable.material as THREE.Material | THREE.Material[] | undefined;
+      if (!material) return;
+      if (Array.isArray(material)) {
+        for (const entry of material) entry.dispose();
+      } else {
+        material.dispose();
+      }
     },
-    [lineObject],
+    [object],
   );
-  if (track.points.length === 0) return null;
-  if (track.mode === 'pose') {
-    const latest = track.points[track.points.length - 1];
-    return (
-      <mesh position={latest}>
-        <sphereGeometry args={[0.08, 16, 12]} />
-        <meshStandardMaterial color={track.color} />
-      </mesh>
-    );
-  }
-  return <primitive object={lineObject} />;
+
+  useSceneObject(object);
+  return null;
 };
 
 const MarkerLinePrimitiveView: React.FC<{ primitive: Extract<MarkerPrimitive, { kind: 'line' }> }> = React.memo(({ primitive }) => {
@@ -761,38 +788,44 @@ const MarkerLinePrimitiveView: React.FC<{ primitive: Extract<MarkerPrimitive, { 
   );
   useEffect(() => () => material.dispose(), [material]);
 
-  return <primitive object={lineObject} />;
+  useSceneObject(lineObject);
+  return null;
 });
 MarkerLinePrimitiveView.displayName = 'MarkerLinePrimitiveView';
 
 const MeshPrimitiveView: React.FC<{
   primitive: Extract<MarkerPrimitive, { kind: 'sphere' | 'cube' | 'orientedBox' }>;
 }> = React.memo(({ primitive }) => {
+  const { invalidate } = useThreeCanvas();
   const material = useMemo(
     () => new THREE.MeshStandardMaterial({ color: primitive.color, roughness: 0.58, metalness: 0.04 }),
     [primitive.color],
   );
+  const mesh = useMemo(() => {
+    const geometry = primitive.kind === 'sphere' ? SHARED_SPHERE_GEOMETRY : SHARED_BOX_GEOMETRY;
+    return new THREE.Mesh(geometry, material);
+  }, [material, primitive.kind]);
+
   useEffect(() => () => material.dispose(), [material]);
 
-  if (primitive.kind === 'orientedBox') {
-    return (
-      <mesh
-        geometry={SHARED_BOX_GEOMETRY}
-        material={material}
-        position={primitive.position}
-        scale={primitive.scale}
-        quaternion={primitive.quaternion}
-      />
-    );
-  }
-  return (
-    <mesh
-      geometry={primitive.kind === 'cube' ? SHARED_BOX_GEOMETRY : SHARED_SPHERE_GEOMETRY}
-      material={material}
-      position={primitive.position}
-      scale={primitive.scale}
-    />
-  );
+  useLayoutEffect(() => {
+    mesh.position.set(primitive.position[0], primitive.position[1], primitive.position[2]);
+    mesh.scale.set(primitive.scale[0], primitive.scale[1], primitive.scale[2]);
+    if (primitive.kind === 'orientedBox') {
+      mesh.quaternion.set(
+        primitive.quaternion[0],
+        primitive.quaternion[1],
+        primitive.quaternion[2],
+        primitive.quaternion[3],
+      );
+    } else {
+      mesh.quaternion.identity();
+    }
+    invalidate();
+  }, [invalidate, mesh, primitive]);
+
+  useSceneObject(mesh);
+  return null;
 });
 MeshPrimitiveView.displayName = 'MeshPrimitiveView';
 
@@ -1165,7 +1198,8 @@ const RobotComponent: React.FC<RobotProps> = ({
   const jointStateDirtyRef = useRef(false);
   const applyPendingRef = useRef(false);
   const cancelApplyFrameRef = useRef<(() => void) | null>(null);
-  const { invalidate } = useThree();
+  const { invalidate } = useThreeCanvas();
+  const scaleGroup = useMemo(() => new THREE.Group(), []);
 
   useEffect(() => {
     jointStateRef.current = jointState;
@@ -1297,17 +1331,99 @@ const RobotComponent: React.FC<RobotProps> = ({
     schedulePoseApply();
   }, [robotModel, jointState, schedulePoseApply]);
 
-  if (!robotModel) {
-    return null;
-  }
-  return (
-    <group scale={[urdfRootScale, urdfRootScale, urdfRootScale]}>
-      <primitive object={robotModel.root} />
-    </group>
-  );
+  useLayoutEffect(() => {
+    scaleGroup.scale.set(urdfRootScale, urdfRootScale, urdfRootScale);
+    invalidate();
+  }, [invalidate, scaleGroup, urdfRootScale]);
+
+  useLayoutEffect(() => {
+    if (!robotModel) return;
+    scaleGroup.add(robotModel.root);
+    invalidate();
+    return () => {
+      scaleGroup.remove(robotModel.root);
+      invalidate();
+    };
+  }, [invalidate, robotModel, scaleGroup]);
+
+  useSceneObject(robotModel ? scaleGroup : null);
+  return null;
 };
 
 const Robot = React.memo(RobotComponent);
+
+const ThreeDSceneChrome: React.FC<{
+  colors: ThemeColors;
+  showGrid: boolean;
+  showAxes: boolean;
+  bvhGroundLayout: BvhGroundLayoutState | null;
+}> = ({ colors, showGrid, showAxes, bvhGroundLayout }) => {
+  const { scene, invalidate } = useThreeCanvas();
+
+  useLayoutEffect(() => {
+    const lights = createZUpLights({ preset: 'full', colors });
+    scene.add(lights.object);
+
+    const grid = showGrid
+      ? createZUpGrid({
+          size: bvhGroundLayout?.size ?? DEFAULT_GRID_SIZE,
+          divisions: bvhGroundLayout?.divisions ?? DEFAULT_GRID_DIVISIONS,
+          rotationX: Math.PI / 2,
+          primary: colors.gridPrimary,
+          secondary: colors.gridSecondary,
+          position: bvhGroundLayout
+            ? new THREE.Vector3(
+                bvhGroundLayout.position[0],
+                bvhGroundLayout.position[1],
+                bvhGroundLayout.position[2],
+              )
+            : undefined,
+        })
+      : null;
+    if (grid) scene.add(grid.object);
+
+    const axes = showAxes ? createAxesHelper(1) : null;
+    if (axes) scene.add(axes.object);
+
+    invalidate();
+    return () => {
+      scene.remove(lights.object);
+      lights.dispose();
+      if (grid) {
+        scene.remove(grid.object);
+        grid.dispose();
+      }
+      if (axes) {
+        scene.remove(axes.object);
+        axes.dispose();
+      }
+      invalidate();
+    };
+  }, [bvhGroundLayout, colors, invalidate, scene, showAxes, showGrid]);
+
+  return null;
+};
+
+const PlaceholderBox: React.FC<{ color: string }> = ({ color }) => {
+  const mesh = useMemo(() => {
+    const instance = new THREE.Mesh(
+      SHARED_BOX_GEOMETRY,
+      new THREE.MeshStandardMaterial({ color }),
+    );
+    instance.position.set(0, 0, 0.5);
+    return instance;
+  }, [color]);
+
+  useEffect(
+    () => () => {
+      (mesh.material as THREE.Material).dispose();
+    },
+    [mesh],
+  );
+
+  useSceneObject(mesh);
+  return null;
+};
 
 // ── Scene ──────────────────────────────────────────────────────────
 const Scene = ({
@@ -1675,31 +1791,18 @@ const Scene = ({
 
   return (
     <>
-      <SceneBackgroundLayer background={colors.sceneBackground} />
-      <ZUpCameraSetup />
+      <ThreeDSceneChrome
+        colors={colors}
+        showGrid={showGrid}
+        showAxes={showAxes}
+        bvhGroundLayout={bvhTopic ? bvhGroundLayout : null}
+      />
       <BvhSceneAutoFit
         bvhTopic={bvhTopic}
         skeletonPrimitives={skeletonPrimitives}
         resetVersion={resetVersion}
         onGroundLayout={handleBvhGroundLayout}
       />
-      <ambientLight intensity={colors.ambientLightIntensity} />
-      <hemisphereLight args={['#ffffff', '#6b7280', colors.hemisphereLightIntensity]} />
-      <directionalLight position={[6, -4, 8]} intensity={colors.keyLightIntensity} />
-      <directionalLight position={[-6, 4, 5]} intensity={colors.fillLightIntensity} />
-      <directionalLight position={[-2, -7, 6]} intensity={colors.rimLightIntensity} />
-      {showGrid &&
-        (bvhTopic && bvhGroundLayout ? (
-          <ZUpGrid
-            colors={colors}
-            size={bvhGroundLayout.size}
-            divisions={bvhGroundLayout.divisions}
-            position={bvhGroundLayout.position}
-          />
-        ) : (
-          <ZUpGrid colors={colors} />
-        ))}
-      {showAxes && <axesHelper args={[1]} />}
 
       {pcTopic && (
         <LivePointCloudLayer
@@ -1738,10 +1841,7 @@ const Scene = ({
       )}
 
       {showPlaceholder && !pcTopic && !urdfText && skeletonPrimitives.length === 0 && (
-        <mesh position={[0, 0, 0.5]}>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color={colors.placeholderColor} />
-        </mesh>
+        <PlaceholderBox color={colors.placeholderColor} />
       )}
     </>
   );
@@ -1781,29 +1881,28 @@ export const ThreeDPanel: React.FC<ThreeDPanelProps> = ({
           ? `Loading Mesh ${meshLoadProgress.loaded}/${meshLoadProgress.total} (${meshLoadPercent}%)`
           : '3D View'}
       </div>
-      <Canvas
-        shadows={true}
-        frameloop="demand"
-        camera={CANVAS_CAMERA}
+      <ThreeCanvas
+        shadows
         gl={CANVAS_GL}
+        camera={CANVAS_CAMERA}
+        autoFrameToGrid
+        background={colors.sceneBackground}
+        gizmoLabelColor={colors.gizmoLabelColor}
       >
-        <Suspense fallback={null}>
-          <Scene
-            player={player}
-            panelId={panelId}
-            colors={colors}
-            showGrid={showGrid}
-            showAxes={showAxes}
-            showPlaceholder={showPlaceholder}
-            pointSize={pointSize}
-            skeleton={skeleton}
-            urdf={resolvedUrdf}
-            topicSettings={topicSettings}
-            onMeshLoadProgressChange={setMeshLoadProgress}
-          />
-          <R3fZUpGizmoLayer labelColor={colors.gizmoLabelColor} />
-        </Suspense>
-      </Canvas>
+        <Scene
+          player={player}
+          panelId={panelId}
+          colors={colors}
+          showGrid={showGrid}
+          showAxes={showAxes}
+          showPlaceholder={showPlaceholder}
+          pointSize={pointSize}
+          skeleton={skeleton}
+          urdf={resolvedUrdf}
+          topicSettings={topicSettings}
+          onMeshLoadProgressChange={setMeshLoadProgress}
+        />
+      </ThreeCanvas>
     </div>
   );
 };
