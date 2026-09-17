@@ -76,7 +76,10 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/):
 | New feature (backward-compatible) | Minor | `1.0.0` -> `1.1.0` |
 | Breaking API change | Major | `1.0.0` -> `2.0.0` |
 
-**Breaking changes** are any modifications to the symbols exported from `src/entrypoints/index.ts` that require consumers to update their code (renamed props, removed exports, changed types).
+**Breaking changes** include:
+
+- Modifications to the symbols exported from `src/entrypoints/index.ts` that require consumers to update their code (renamed props, removed exports, changed types).
+- Peer-graph changes (`peerDependencies` added, removed, or narrowed), even when `src/entrypoints/index.ts` is unchanged. Hosts must install a compatible `react` / `react-dom` / `three` set.
 
 ### Pre-release versions
 

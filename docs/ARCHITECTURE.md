@@ -254,9 +254,8 @@ Fixed-width sidebar (collapsible) on the left with three tabs:
 | Library | Purpose |
 |---------|---------|
 | uplot ^1.6 | High-performance time-series chart (Plot panel) |
-| three.js | 3D rendering engine (3D panel: point clouds, URDF) |
-| `@react-three/fiber` | React bindings for Three.js |
-| `@react-three/drei` | Three.js utility helpers (OrbitControls, etc.) |
+| three.js | 3D rendering engine (3D panel: point clouds, URDF). Host peer; not bundled. |
+| In-tree ThreeCanvas | Imperative three.js canvas runtime (OrbitControls, axes gizmo). Internal — not a public export. |
 | Built-in URDF parser (`DOMParser`) | URDF robot model loading |
 
 ### 4.6 State Management
@@ -672,8 +671,9 @@ export default defineConfig({
 
 1. `tsc -p tsconfig.lib.json --emitDeclarationOnly` → intermediate `.tmp-dts/` (gitignored, not published)
 2. `@microsoft/api-extractor` (`api-extractor.rosview.json` / `api-extractor.urdf-preview.json`) → single `dist-lib/rosview.d.ts` and `dist-lib/urdf-preview.d.ts`
+3. `scripts/check-lib-externals.mjs` fails if `dist-lib` still contains `@react-three`, `react-reconciler`, or `three-stdlib`, or if `three` was inlined instead of left as a host external (`from "three"` / `from "three/…"`)
 
-Important: use an **absolute** `build.lib.entry`. The public entry `src/entrypoints/index.ts` re-exports via relative paths so rolled-up types stay free of fragile `@/` paths for consumers. See the checked-in `vite.lib.config.ts` for `rolldownOptions` externals and worker settings.
+Important: use an **absolute** `build.lib.entry`. The public entry `src/entrypoints/index.ts` re-exports via relative paths so rolled-up types stay free of fragile `@/` paths for consumers. See the checked-in `vite.lib.config.ts` for `rolldownOptions` externals and worker settings. `ThreeCanvas` is internal and is not exported from `src/entrypoints/index.ts` or `urdf-preview.ts`.
 
 ```typescript
 // ...path, fileURLToPath, packageDir as in vite.lib.config.ts
@@ -694,7 +694,7 @@ export default defineConfig({
       fileName: (_format, entryName) => `${entryName}.es.js`,
     },
     rolldownOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime' /* + three / @react-three/* */],
+      external: ['react', 'react-dom', 'react/jsx-runtime' /* + three / three/* */],
       output: {
         assetFileNames: (a) =>
           a.name?.endsWith('.css') ? 'rosview.css' : (a.name ?? '[name][extname]'),
@@ -722,8 +722,9 @@ export default defineConfig({
     "./style.css": "./dist-lib/rosview.css"
   },
   "peerDependencies": {
-    "react":     "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react":     ">=19.2.0 <20",
+    "react-dom": ">=19.2.0 <20",
+    "three":     ">=0.173.0"
   }
 }
 ```

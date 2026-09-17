@@ -8,7 +8,8 @@
 
 ## 前置条件
 
-- React ≥ 19 与 react-dom ≥ 19
+- React ≥ 19.2（含 19.3）与 react-dom ≥ 19.2
+- `three` ≥ 0.173（peer；ROSView 不打包它）
 - 支持 ES 模块与 Web Workers 的打包工具（推荐 Vite；Webpack 5+ 需适当配置）
 - Node.js ≥ 22（与 `package.json` 中 `engines` 一致；CI 使用 Node 24）
 
@@ -19,6 +20,8 @@
 ```bash
 npm install @ioai/rosview
 ```
+
+`@react-three/fiber` 与 `@react-three/drei` **不是** peer。若当初仅为 ROSView 安装它们，请卸载。若宿主自己的画布仍使用 React Three Fiber，请把 fiber/drei 留在**宿主**依赖中。`three` 仍然必需。
 
 ---
 

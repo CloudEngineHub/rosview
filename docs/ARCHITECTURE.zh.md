@@ -247,9 +247,8 @@
 | 库 | 说明 |
 |----|------|
 | uplot ^1.6 | 高性能时序曲线图（Plot 面板） |
-| three.js | 3D 渲染引擎（3D 面板：点云、URDF） |
-| `@react-three/fiber` | Three.js 的 React 绑定 |
-| `@react-three/drei` | Three.js 常用工具集（OrbitControls 等） |
+| three.js | 3D 渲染引擎（3D 面板：点云、URDF）。宿主 peer，不打进包。 |
+| 内置 ThreeCanvas | 命令式 three.js 画布运行时（OrbitControls、轴向 gizmo）。内部实现，非公开导出。 |
 | 内置 URDF 解析器（`DOMParser`） | URDF 机器人模型加载 |
 
 ### 4.6 状态管理
@@ -682,8 +681,9 @@ export default defineConfig({
 
 1. `tsc -p tsconfig.lib.json --emitDeclarationOnly` → 中间产物 `.tmp-dts/`（已 gitignore，不发布）
 2. `@microsoft/api-extractor`（`api-extractor.rosview.json` / `api-extractor.urdf-preview.json`）→ 单一 `dist-lib/rosview.d.ts` 与 `dist-lib/urdf-preview.d.ts`
+3. `scripts/check-lib-externals.mjs`：若 `dist-lib` 仍含 `@react-three`、`react-reconciler` 或 `three-stdlib`，或 `three` 被内联而非作为宿主 external（`from "three"` / `from "three/…"`），则失败
 
-要点：`build.lib.entry` 使用**绝对路径**；公开入口 `src/entrypoints/index.ts` 用相对路径 re-export，避免类型 rollup 后把 `@/` 暴露给消费者。完整配置以仓库内 `vite.lib.config.ts` 的 `rolldownOptions` / external 为准。
+要点：`build.lib.entry` 使用**绝对路径**；公开入口 `src/entrypoints/index.ts` 用相对路径 re-export，避免类型 rollup 后把 `@/` 暴露给消费者。完整配置以仓库内 `vite.lib.config.ts` 的 `rolldownOptions` / external 为准。`ThreeCanvas` 为内部实现，不从 `src/entrypoints/index.ts` 或 `urdf-preview.ts` 导出。
 
 ```typescript
 import { defineConfig } from 'vite';
@@ -714,7 +714,7 @@ export default defineConfig({
       fileName: (_format, entryName) => `${entryName}.es.js`,
     },
     rolldownOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime' /* + three / @react-three/* */],
+      external: ['react', 'react-dom', 'react/jsx-runtime' /* + three / three/* */],
       output: {
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) return 'rosview.css';
@@ -755,8 +755,9 @@ export default defineConfig({
     "preview": "npm run build && vite preview"
   },
   "peerDependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": ">=19.2.0 <20",
+    "react-dom": ">=19.2.0 <20",
+    "three": ">=0.173.0"
   }
 }
 ```
@@ -887,8 +888,6 @@ rosview/
 
     "uplot": "^1.6.32",
     "three": "^0.171.0",
-    "@react-three/fiber": "^9.1.0",
-    "@react-three/drei": "^10.0.0",
 
     "react-intl": "^10.1.2",
 

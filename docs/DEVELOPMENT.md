@@ -66,7 +66,7 @@ so Vite serves static files and Range requests correctly.
 
 ### WASM re-evaluation
 
-Prefer main-thread rendering and subscription tuning before MCAP-parse WASM. Consider a WASM PoC only if worker traces show deserialize dominating, main-thread R3F cost is already low, and message latency still needs improvement.
+Prefer main-thread rendering and subscription tuning before MCAP-parse WASM. Consider a WASM PoC only if worker traces show deserialize dominating, main-thread 3D render cost is already low, and message latency still needs improvement.
 
 ## Acceptance (multi-source MCAP)
 
