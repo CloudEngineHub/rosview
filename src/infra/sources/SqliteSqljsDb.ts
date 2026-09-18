@@ -108,9 +108,9 @@ export class SqliteSqljsDb implements SqliteDb {
     }
     if (opts.endTime != undefined) {
       if (args.length === 0) {
-        query += ' where timestamp < cast(? as INTEGER)';
+        query += ' where timestamp <= cast(? as INTEGER)';
       } else {
-        query += ' and timestamp < cast(? as INTEGER)';
+        query += ' and timestamp <= cast(? as INTEGER)';
       }
       args.push(toNanoSec(opts.endTime).toString());
     }
