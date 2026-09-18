@@ -11,7 +11,8 @@
 - React ≥ 19.2（含 19.3）与 react-dom ≥ 19.2
 - `three` ≥ 0.173（peer；ROSView 不打包它）
 - 支持 ES 模块与 Web Workers 的打包工具（推荐 Vite；Webpack 5+ 需适当配置）
-- Node.js ≥ 22（与 `package.json` 中 `engines` 一致；CI 使用 Node 24）
+
+安装已发布的 npm 包不要求特定 Node.js 版本（使用较新的 npm 即可）。**开发本仓库**使用 Node 24（见 `CONTRIBUTING.md` / `.nvmrc`）。`package.json` 的 `engines.node` 为 `>=18`，避免宿主被我们的 CI Node 版本拦住。
 
 ---
 
@@ -22,6 +23,8 @@ npm install @ioai/rosview
 ```
 
 `@react-three/fiber` 与 `@react-three/drei` **不是** peer。若当初仅为 ROSView 安装它们，请卸载。若宿主自己的画布仍使用 React Three Fiber，请把 fiber/drei 留在**宿主**依赖中。`three` 仍然必需。
+
+宿主应用中需已有上述 peer 包（npm 7+ 会自动安装缺失的 peer）。ROSView 运行时用到的其它库（Dockview、MCAP、Foxglove 编解码、Radix 等）**已经打进** `@ioai/rosview` 包内。不要为了「让 rosview 能跑」再在宿主里额外安装它们——那会重复拷贝并可能破坏下游 lockfile。
 
 ---
 

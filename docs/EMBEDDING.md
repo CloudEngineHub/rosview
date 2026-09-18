@@ -11,7 +11,8 @@ This guide walks through integrating ROSView as an embeddable React component in
 - React ≥ 19.2 (including 19.3) and react-dom ≥ 19.2
 - `three` ≥ 0.173 (peer; ROSView does not bundle it)
 - A bundler that supports ES modules and Web Workers (Vite recommended; Webpack 5+ works with configuration)
-- Node.js ≥ 22 (matches `engines` in `package.json`; CI uses Node 24)
+
+Installing the published package does not require a particular Node.js version beyond a current npm client. **Developing this repository** uses Node 24 (see `CONTRIBUTING.md` / `.nvmrc`). `package.json` `engines.node` is `>=18` so host apps are not blocked by our CI Node version.
 
 ---
 
@@ -22,6 +23,8 @@ npm install @ioai/rosview
 ```
 
 `@react-three/fiber` and `@react-three/drei` are **not** peers. Hosts that installed them **only** for ROSView should uninstall them. Hosts that still use React Three Fiber for their own canvases keep fiber/drei as **host** dependencies. `three` remains required.
+
+Peer packages must already be in the host app (npm 7+ will install missing peers automatically). Other libraries ROSView uses at runtime (Dockview, MCAP, Foxglove codecs, Radix, and so on) are **already bundled** into `@ioai/rosview`. Do not add them as extra dependencies of your app “so rosview works” — that duplicates copies and can break the host lockfile.
 
 ---
 
