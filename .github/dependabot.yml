@@ -5,6 +5,22 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # These majors need a dedicated migration, not a weekly Dependabot PR
+      # that consumes the open-PR budget. Groups already exclude majors;
+      # ungrouped majors still open one PR per package.
+      - dependency-name: "dockview"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "dockview-core"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: ["version-update:semver-major"]
     groups:
       # First match wins. All runtime libraries live in devDependencies because
       # the published package is pre-bundled; group by role, not by npm
