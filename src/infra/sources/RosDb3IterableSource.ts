@@ -1,20 +1,10 @@
 import { ROS2_TO_DEFINITIONS, Rosbag2 } from '@foxglove/rosbag2';
 import { SqliteSqljsDb } from './SqliteSqljsDb';
-import { stringify } from "@foxglove/rosmsg";
 import type { Initialization, MessageEvent, RosDatatypes, Time, TopicInfo, TopicStats } from '@/core/types/ros';
 import type { GetAdjacentMessageArgs, IIterableSource } from "./IIterableSource";
 import type { MessageIteratorArgs, GetBackfillMessagesArgs } from '@/infra/workers/types';
 import { basicDatatypes } from '@/shared/utils/basicDatatypes';
-import type { MessageDefinition } from "@foxglove/message-definition";
 import { addMs, addNano, toNano } from '@/shared/utils/time';
-
-function dataTypeToFullName(dataType: string): string {
-  const parts = dataType.split("/");
-  if (parts.length === 2) {
-    return `${parts[0]}/msg/${parts[1]}`;
-  }
-  return dataType;
-}
 
 type RosDb3SourceParams =
   | { type: "files"; files: File[] }
@@ -135,29 +125,6 @@ export class RosDb3IterableSource implements IIterableSource {
         durationSec,
         frequency,
       };
-
-      const parsedMsgdef = ROS2_TO_DEFINITIONS.get(topicDef.type);
-      if (parsedMsgdef) {
-        const typesToProcess = [parsedMsgdef];
-        const typesForMessage: MessageDefinition[] = [];
-        const seenTypes = new Set<string>();
-        while (typesToProcess.length > 0) {
-          const rosType = typesToProcess.shift()!;
-          typesForMessage.push(rosType);
-          for (const def of rosType.definitions) {
-            const fullTypeName = dataTypeToFullName(def.type);
-            if (def.isComplex === true && !seenTypes.has(fullTypeName)) {
-              const newComplexType = ROS2_TO_DEFINITIONS.get(fullTypeName);
-              if (newComplexType) {
-                typesToProcess.push(newComplexType);
-                seenTypes.add(fullTypeName);
-              }
-            }
-          }
-        }
-        const messageDefinition = stringify(typesForMessage);
-        console.log(`Generated definition for ${topicDef.type} with length ${messageDefinition.length}`);
-      }
     }
 
     this._start = start;
