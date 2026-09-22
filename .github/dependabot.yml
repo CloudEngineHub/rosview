@@ -2,31 +2,28 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    # Monthly, not weekly. A group PR opens whenever any member moved, and
+    # lucide-react / eslint / @types/node move most weeks, so a weekly schedule
+    # produced a wave of PRs every run. Security updates ignore this interval.
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    # One open PR per group. A group that is still open is updated in place
+    # on the next run instead of stacking another PR.
+    open-pull-requests-limit: 3
     ignore:
-      # These majors need a dedicated migration, not a weekly Dependabot PR
-      # that consumes the open-PR budget. Groups already exclude majors;
-      # ungrouped majors still open one PR per package.
-      - dependency-name: "dockview"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "dockview-core"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "tailwindcss"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "vitest"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@vitest/coverage-v8"
+      # Version-update majors only. update-types alone does not suppress
+      # security updates. Do not add `versions` on this rule: combining
+      # versions and update-types also filters security PRs.
+      # Deferred majors (dedicated migration, not a bot PR): dockview 8,
+      # Tailwind 4, TypeScript 7, Vitest 5, react-intl 12.
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     groups:
       # First match wins. All runtime libraries live in devDependencies because
       # the published package is pre-bundled; group by role, not by npm
       # production vs development (the production group would be empty).
-      # Majors are ungrouped so dockview 8 / Tailwind 4 / TypeScript 7 land as
-      # individual reviewable PRs instead of one failing bulk update.
+      # Groups stay minor/patch so a later removal of the major ignore cannot
+      # drop dockview 8 / Tailwind 4 / TypeScript 7 into one failing bulk PR.
       peer-and-types:
         update-types:
           - "minor"
@@ -79,5 +76,11 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 3
+      interval: monthly
+    # Action bumps are almost always majors (and old majors get deprecated).
+    # Keep those; just don't open one PR per action.
+    open-pull-requests-limit: 1
+    groups:
+      actions:
+        patterns:
+          - "*"

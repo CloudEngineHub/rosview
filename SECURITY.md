@@ -44,6 +44,6 @@ Prefer a parent-range update (`npm update <nested-pkg>`) over a new override. Ad
 
 ## Dependency vulnerabilities
 
-This repository uses Dependabot for npm and GitHub Actions updates, grouped as peer stack, bundled runtime, and toolchain so a compiler bump cannot block a codec patch.
+This repository uses Dependabot for npm and GitHub Actions updates. Version updates run monthly, grouped as peer stack, bundled runtime, and toolchain so a compiler bump cannot block a codec patch. Semver-major version bumps are not opened automatically; those are dedicated migrations. Security updates still open as soon as an advisory applies.
 
 High/critical issues are fixed by upgrading the affected package when the parent range allows it, or with a narrow override when it does not. Toolchain-only findings that cannot be reached without an unsafe major bump may be waived in this file with the advisory id and the reason.
