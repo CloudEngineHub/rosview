@@ -21,6 +21,8 @@ import { useMessagePipelineStore } from '@/core/pipeline/store';
 import type { SampleDataset } from '@/services/sampleDatasets';
 import type { DatasetHistoryListItem } from '@/shared/utils/datasetHistory';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/shared/ui/resizable';
+import { useGroupRef } from 'react-resizable-panels';
+import { useIsomorphicLayoutEffect, useStackedLayout } from './useStackedLayout';
 import { Skeleton } from '@/shared/ui/skeleton';
 import type { RosViewExtension } from '@/core/extensions/types';
 import { buildExtensionContext } from '@/core/extensions/buildContext';
@@ -34,6 +36,9 @@ import {
   clampSidebarPanelPercent,
   getInitialSidebarPanelPercent,
 } from '@/features/layout/sidebarPanelSize';
+
+/** Sidebar share of the stacked (vertical) split, in percent. */
+const STACKED_SIDEBAR_DEFAULT_PERCENT = 32;
 
 interface RosViewContentProps {
   player: Player;
@@ -128,6 +133,29 @@ export const RosViewContent: React.FC<RosViewContentProps> = ({
     return readPreferences()?.autoDataQualityScan === true;
   });
   const [isTopicDragOver, setIsTopicDragOver] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const groupRef = useGroupRef();
+
+  const stacked = useStackedLayout(contentRef, showWelcomeFallback);
+
+  // One panel group for both layouts: switching orientation must not remount
+  // the panels or the sidebar (Dockview layout, scroll and search state).
+  const sidebarSizePercent = stacked ? STACKED_SIDEBAR_DEFAULT_PERCENT : sidebarPanelPercent;
+  const lastStackedRef = useRef(stacked);
+  useIsomorphicLayoutEffect(() => {
+    if (lastStackedRef.current === stacked) {
+      return;
+    }
+    lastStackedRef.current = stacked;
+    if (!showSidebar) {
+      return;
+    }
+    try {
+      groupRef.current?.setLayout({ sidebar: sidebarSizePercent, main: 100 - sidebarSizePercent });
+    } catch {
+      // The group re-reads defaults on its next layout pass.
+    }
+  }, [stacked, showSidebar, sidebarSizePercent, groupRef]);
   const extensionContext = useMemo(
     () =>
       buildExtensionContext({
@@ -252,6 +280,73 @@ export const RosViewContent: React.FC<RosViewContentProps> = ({
     setSidebarPanelPercent(clampSidebarPanelPercent(nextSidebarPercent));
   }, []);
 
+  const sidebarElement = (
+    <Sidebar
+      stacked={stacked}
+      player={player}
+      datasets={datasets}
+      activeDatasetId={activeDatasetId}
+      onDatasetSelect={onDatasetSelect}
+      autoDataQualityScan={autoDataQualityScan}
+      onAutoDataQualityScanChange={setAutoDataQualityScan}
+      preferencePersistence={preferencePersistence}
+      extensionContext={extensionContext}
+      extensions={extensions}
+      initialSidebarTab={initialSidebarTab}
+    />
+  );
+
+  const mainElement = (
+    <main
+      className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background contain-strict ${
+        isTopicDragOver ? 'ring-1 ring-inset ring-primary/40' : ''
+      }`}
+      onDragEnter={isReady ? handleTopicDragEnter : undefined}
+      onDragOver={isReady ? handleMainDragOver : undefined}
+      onDragLeave={isReady ? handleTopicDragLeave : undefined}
+      onDrop={isReady ? handleMainDrop : undefined}
+    >
+      {isTopicDragOver && (
+        <div className="pointer-events-none absolute inset-4 z-10 flex items-center justify-center rounded-lg border border-dashed border-primary/60 bg-primary/5">
+          <div className="rounded-md bg-background/90 px-4 py-3 text-center shadow-xs">
+            <div className="text-sm font-medium">
+              {formatMessage({ id: 'sidebar.topicDropTitle' })}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {formatMessage({ id: 'sidebar.topicDropSubtitle' })}
+            </div>
+          </div>
+        </div>
+      )}
+      {isReady ? (
+        <DockviewLayout
+          key={activeDatasetId ?? 'dataset'}
+          player={player}
+          preferAutoLayout={preferAutoLayout}
+          initialLayout={initialLayout}
+          defaultPanel={defaultPanel}
+          layoutPersistence={layoutPersistence}
+          layoutStorageKey={layoutStorageKey}
+          suppressWelcomePanel={suppressWelcomePanel}
+          onLayoutReady={onLayoutReady}
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="min-h-0 flex-1 rounded-lg" />
+        </div>
+      )}
+      {!isReady ? (
+        <LoadingOverlay
+          sourceName={loadingSourceName}
+          onCancel={onCancelLoading}
+        />
+      ) : (
+        <PlaybackBufferingOverlay player={player} />
+      )}
+    </main>
+  );
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {showWelcomeFallback ? (
@@ -269,7 +364,11 @@ export const RosViewContent: React.FC<RosViewContentProps> = ({
           />
         </div>
       ) : (
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          ref={contentRef}
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          data-layout={stacked ? 'stacked' : 'split'}
+        >
           <input
             id="rosview-content-file"
             type="file"
@@ -295,90 +394,56 @@ export const RosViewContent: React.FC<RosViewContentProps> = ({
             }}
           />
           <ResizablePanelGroup
-            orientation="horizontal"
+            groupRef={groupRef}
+            orientation={stacked ? 'vertical' : 'horizontal'}
             className="min-h-0 min-w-0 flex-1"
-            onLayoutChanged={showSidebar ? handleLayoutChanged : undefined}
+            onLayoutChanged={showSidebar && !stacked ? handleLayoutChanged : undefined}
           >
-            {showSidebar && (
-              <>
-                <ResizablePanel
-                  id="sidebar"
-                  className="flex h-full min-h-0 min-w-0 flex-col"
-                  defaultSize={`${sidebarPanelPercent}%`}
-                  minSize={`${SIDEBAR_MIN_PANEL_PERCENT}%`}
-                  maxSize={`${SIDEBAR_MAX_PANEL_PERCENT}%`}
-                >
-                  <Sidebar
-                    player={player}
-                    datasets={datasets}
-                    activeDatasetId={activeDatasetId}
-                    onDatasetSelect={onDatasetSelect}
-                    autoDataQualityScan={autoDataQualityScan}
-                    onAutoDataQualityScanChange={setAutoDataQualityScan}
-                    preferencePersistence={preferencePersistence}
-                    extensionContext={extensionContext}
-                    extensions={extensions}
-                    initialSidebarTab={initialSidebarTab}
-                  />
-                </ResizablePanel>
-                <ResizableHandle withHandle aria-label={formatMessage({ id: 'viewer.resizeSidebar' })} />
-              </>
-            )}
-            <ResizablePanel
-              id="main"
-              className="flex h-full min-h-0 min-w-0 flex-col"
-              defaultSize={showSidebar ? `${100 - sidebarPanelPercent}%` : '100%'}
-              minSize={showSidebar ? `${100 - SIDEBAR_MAX_PANEL_PERCENT}%` : '100%'}
-            >
-              <main
-                className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background contain-strict ${
-                  isTopicDragOver ? 'ring-1 ring-inset ring-primary/40' : ''
-                }`}
-                onDragEnter={isReady ? handleTopicDragEnter : undefined}
-                onDragOver={isReady ? handleMainDragOver : undefined}
-                onDragLeave={isReady ? handleTopicDragLeave : undefined}
-                onDrop={isReady ? handleMainDrop : undefined}
-              >
-                {isTopicDragOver && (
-                  <div className="pointer-events-none absolute inset-4 z-10 flex items-center justify-center rounded-lg border border-dashed border-primary/60 bg-primary/5">
-                    <div className="rounded-md bg-background/90 px-4 py-3 text-center shadow-xs">
-                      <div className="text-sm font-medium">
-                        {formatMessage({ id: 'sidebar.topicDropTitle' })}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {formatMessage({ id: 'sidebar.topicDropSubtitle' })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {isReady ? (
-                  <DockviewLayout
-                    key={activeDatasetId ?? 'dataset'}
-                    player={player}
-                    preferAutoLayout={preferAutoLayout}
-                    initialLayout={initialLayout}
-                    defaultPanel={defaultPanel}
-                    layoutPersistence={layoutPersistence}
-                    layoutStorageKey={layoutStorageKey}
-                    suppressWelcomePanel={suppressWelcomePanel}
-                    onLayoutReady={onLayoutReady}
-                  />
-                ) : (
-                  <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-                    <Skeleton className="h-8 w-40" />
-                    <Skeleton className="min-h-0 flex-1 rounded-lg" />
-                  </div>
-                )}
-                {!isReady ? (
-                  <LoadingOverlay
-                    sourceName={loadingSourceName}
-                    onCancel={onCancelLoading}
-                  />
-                ) : (
-                  <PlaybackBufferingOverlay player={player} />
-                )}
-              </main>
-            </ResizablePanel>
+            {/*
+             * Keyed children keep their state while React reorders them: the
+             * sidebar leads the split layout and follows the panels when stacked,
+             * so DOM (and focus) order always matches what is on screen.
+             */}
+            {(stacked ? ['main', 'handle', 'sidebar'] : ['sidebar', 'handle', 'main'])
+              .filter((slot) => showSidebar || slot === 'main')
+              .map((slot) => {
+                if (slot === 'sidebar') {
+                  return (
+                    <ResizablePanel
+                      key="sidebar"
+                      id="sidebar"
+                      className="flex min-h-0 min-w-0 flex-col"
+                      defaultSize={`${sidebarSizePercent}%`}
+                      minSize={stacked ? '15%' : `${SIDEBAR_MIN_PANEL_PERCENT}%`}
+                      maxSize={stacked ? '70%' : `${SIDEBAR_MAX_PANEL_PERCENT}%`}
+                    >
+                      {sidebarElement}
+                    </ResizablePanel>
+                  );
+                }
+                if (slot === 'handle') {
+                  return (
+                    <ResizableHandle
+                      key="handle"
+                      withHandle={!stacked}
+                      aria-label={formatMessage({ id: 'viewer.resizeSidebar' })}
+                    />
+                  );
+                }
+                return (
+                  <ResizablePanel
+                    key="main"
+                    id="main"
+                    className="flex min-h-0 min-w-0 flex-col"
+                    defaultSize={showSidebar ? `${100 - sidebarSizePercent}%` : '100%'}
+                    minSize={
+                      showSidebar ? (stacked ? '30%' : `${100 - SIDEBAR_MAX_PANEL_PERCENT}%`) : '100%'
+                    }
+                  >
+                    {mainElement}
+                  </ResizablePanel>
+                );
+              })}
           </ResizablePanelGroup>
         </div>
       )}
