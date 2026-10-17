@@ -23,6 +23,7 @@ import { isH264MessageEvent, toWorkerFrame } from './core/messageFrameAdapter';
 import { applyDepthTopicPreset } from './core/depthColorDefaults';
 import type { ImageConfig } from './defaults';
 import { TopicQuickPicker } from '../framework/TopicQuickPicker';
+import { getStatusText } from './core/imageStatusText';
 import { PanelTopicBar } from '../framework/PanelTopicBar';
 import ImageRenderWorkerClass from './core/ImageRender.worker.ts?worker&inline';
 
@@ -512,7 +513,7 @@ export const ImagePanel: React.FC<ImagePanelProps> = (props) => {
     worker.postMessage({ type: 'renderOptions', options } satisfies ImageRenderWorkerRequest);
   }, [backgroundColor, flipHorizontal, flipVertical, rotation, smoothing, fitMode]);
 
-  const statusText = getStatusText(status);
+  const statusText = getStatusText(status, formatMessage);
 
   return (
     <div
@@ -564,22 +565,6 @@ export const ImagePanel: React.FC<ImagePanelProps> = (props) => {
     </div>
   );
 };
-
-function getStatusText(status: ImageSurfaceStatus): string | null {
-  if (status.phase === 'idle') {
-    return 'Waiting for image data';
-  }
-  if (status.phase === 'error') {
-    return status.message ?? 'Image decode failed';
-  }
-  if (status.phase === 'stalled') {
-    return status.message ?? 'Video stalled — recovering';
-  }
-  if (status.phase === 'decoding' && !status.width && !status.height) {
-    return 'Decoding latest frame...';
-  }
-  return null;
-}
 
 function isUiStatusEqual(a: ImageSurfaceStatus, b: ImageSurfaceStatus): boolean {
   return (
