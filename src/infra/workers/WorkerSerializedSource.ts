@@ -98,7 +98,12 @@ export class WorkerSerializedSource implements ISourceHandle {
       console.debug("WorkerSerializedSource: initialize result received");
       return result;
     } catch (e) {
-      console.error("WorkerSerializedSource: initialize failed", e);
+      // A cancelled initialize (terminate during load, e.g. the host unmounted) is expected.
+      if (isWorkerSourceCancelledError(e)) {
+        console.debug("WorkerSerializedSource: initialize cancelled");
+      } else {
+        console.error("WorkerSerializedSource: initialize failed", e);
+      }
       throw e;
     }
   }

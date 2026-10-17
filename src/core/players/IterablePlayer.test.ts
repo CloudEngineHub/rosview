@@ -1412,3 +1412,36 @@ describe('IterablePlayer playback watchdogs', () => {
     }
   });
 });
+
+describe('IterablePlayer initialize logging', () => {
+  async function initializeWith(rejection: Error) {
+    const source = makeSource([]);
+    vi.mocked(source.initialize).mockRejectedValue(rejection);
+    const player = new IterablePlayer(source);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    try {
+      await expect(player.initialize({})).rejects.toBe(rejection);
+      return {
+        error: error.mock.calls.map((c) => String(c[0])),
+        debug: debug.mock.calls.map((c) => String(c[0])),
+      };
+    } finally {
+      error.mockRestore();
+      debug.mockRestore();
+    }
+  }
+
+  it('logs a cancelled source at debug level only', async () => {
+    const cancelled = new Error('Worker initialize cancelled');
+    cancelled.name = 'WorkerSourceCancelledError';
+    const logs = await initializeWith(cancelled);
+    expect(logs.error).not.toContain('IterablePlayer: initialization failed');
+    expect(logs.debug).toContain('IterablePlayer: initialization cancelled');
+  });
+
+  it('still reports a real failure as a console error', async () => {
+    const logs = await initializeWith(new Error('HTTP 404'));
+    expect(logs.error).toContain('IterablePlayer: initialization failed');
+  });
+});

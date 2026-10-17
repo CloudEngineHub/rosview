@@ -118,6 +118,24 @@ describe('WorkerSerializedSource.initialize', () => {
     expect(worker.terminate).toHaveBeenCalled();
   });
 
+  it('logs a cancelled initialize at debug level, not as a console error', async () => {
+    mockRemote.initialize.mockReturnValue(new Promise<Initialization>(() => undefined));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    try {
+      const source = new WorkerSerializedSource(createMockWorker());
+      const pending = source.initialize({ file: new Blob(['x']) });
+      await Promise.resolve();
+      source.terminate();
+      await expect(pending).rejects.toBeInstanceOf(WorkerSourceCancelledError);
+      expect(error).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledWith('WorkerSerializedSource: initialize cancelled');
+    } finally {
+      error.mockRestore();
+      debug.mockRestore();
+    }
+  });
+
   it('rejects when the worker emits an error event during initialize', async () => {
     mockRemote.initialize.mockReturnValue(new Promise<Initialization>(() => undefined));
 

@@ -490,7 +490,12 @@ export class IterablePlayer implements Player {
       this._startLoadProgressPolling();
       void this._refreshLoadProgress();
     } catch (err) {
-      console.error("IterablePlayer: initialization failed", err);
+      // Matched by name: core must not import the worker implementation.
+      if (err instanceof Error && err.name === "WorkerSourceCancelledError") {
+        console.debug("IterablePlayer: initialization cancelled");
+      } else {
+        console.error("IterablePlayer: initialization failed", err);
+      }
       this._state.presence = "closed";
       this._state.activeData = undefined;
       messageBus.reset();
