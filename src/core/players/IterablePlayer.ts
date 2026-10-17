@@ -629,8 +629,27 @@ export class IterablePlayer implements Player {
       this._currentTime = this._clampToRange(msg.receiveTime);
       this._clock.seek(this._currentTime, performance.now());
       this._topicLastMessageNs.clear();
-      this._distributeMessages([msg], this._currentTime);
+      // Announce the new time before delivering frames, as seek does: panels
+      // clear on a rewind, and frames delivered first would be wiped.
       this._notifyTimeSubscribers(this._currentTime);
+      // Refresh every subscribed topic at the new time, not only the topic of
+      // the adjacent message, so a step back leaves no panel empty.
+      let backfill: MessageEvent[] = [];
+      try {
+        backfill = await this._withSourceTimeout(
+          this._source.getBackfillMessages({ time: this._currentTime, topics }),
+          "playback backfill timed out",
+        );
+        this._noteSourceSuccess();
+      } catch (err) {
+        // Still show the stepped message; other panels refresh on the next step or play.
+        console.warn("IterablePlayer: stepMessage backfill failed", err);
+      }
+      if (!this._isPlaybackEpochCurrent(epoch)) return;
+      const hasSteppedMessage = backfill.some(
+        (event) => event.topic === msg.topic && toNano(event.receiveTime) === toNano(msg.receiveTime),
+      );
+      this._distributeMessages(hasSteppedMessage ? backfill : [...backfill, msg], this._currentTime);
       this._lastPipelineEmitMs = 0;
       this._emitState();
       this._scheduleNextTick();
