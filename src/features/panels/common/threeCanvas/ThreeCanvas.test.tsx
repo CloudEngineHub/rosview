@@ -1,6 +1,8 @@
 /**
  * @vitest-environment happy-dom
  */
+import { IntlProvider } from 'react-intl';
+import { getRosViewMessages } from '@/shared/intl/loadRosViewMessages';
 import { act, StrictMode, useLayoutEffect, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import * as THREE from 'three';
@@ -163,22 +165,24 @@ describe('ThreeCanvas', () => {
 
     act(() => {
       root.render(
-        <ThreeCanvas
-          background="#111111"
-          gizmoLabelColor="#ffffff"
-          autoFrameToGrid={false}
-          createRenderer={() => {
-            throw new Error('Error creating WebGL context');
-          }}
-        >
-          <Child />
-        </ThreeCanvas>,
+        <IntlProvider locale="zh" messages={getRosViewMessages('zh')}>
+          <ThreeCanvas
+            background="#111111"
+            gizmoLabelColor="#ffffff"
+            autoFrameToGrid={false}
+            createRenderer={() => {
+              throw new Error('Error creating WebGL context');
+            }}
+          >
+            <Child />
+          </ThreeCanvas>
+        </IntlProvider>,
       );
     });
 
     expect(log).toEqual([]);
     expect(container.querySelector('[data-testid="three-canvas-webgl-unavailable"]')?.textContent).toBe(
-      'WebGL unavailable',
+      'WebGL 不可用',
     );
     expect(container.querySelector('[data-testid="three-canvas"] canvas')).toBeNull();
   });

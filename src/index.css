@@ -539,4 +539,8 @@
   #rosview-root .topic-row-count-extra {
     display: none;
   }
+  /* Built-in sidebar tabs keep their icon and accessible name; extension tabs keep their label. */
+  #rosview-root .sidebar-tab-label {
+    display: none;
+  }
 }

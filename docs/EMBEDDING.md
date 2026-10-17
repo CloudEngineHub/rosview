@@ -63,6 +63,12 @@ The component defaults to `height: 100vh`. Use the `className` or `style` props 
 
 By default `urlState` is `'off'`: the viewer does **not** call `history.pushState` or interpret `file://` / `folder://` in the `url` prop as restorable locators. Use `urlState="spa"` only if you are building a full-page app that owns the address bar (same behavior as the standalone site).
 
+### Narrow containers and keyboard shortcuts
+
+When the viewer's own content area is narrower than 640px (the container, not the window), the sidebar moves below the player and the split becomes vertical. The panels are reordered, not remounted, so the Dockview layout and sidebar state survive the change. Sidebar tabs show icons with accessible names when the sidebar itself is narrower than 320px.
+
+Global playback shortcuts (Space, arrow keys) are ignored while focus is in a text field, a select, or an interactive control that owns those keys: tabs, sliders, radios, checkboxes, menus, listboxes and dialogs. Space is also left to a focused button or link. Ctrl/Cmd chords without Alt are left to the browser and the host; Alt+Ctrl/Cmd+Arrow still steps by 100 ms.
+
 ---
 
 ## Step 3 — Local file picker

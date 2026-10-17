@@ -455,7 +455,7 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({ player, extensionConte
   );
 
   return (
-    <div className="border-t border-border/70 bg-card px-3 py-1.5 shrink-0" data-testid="playback-bar">
+    <div className="@container/playback border-t border-border/70 bg-card px-3 py-1.5 shrink-0" data-testid="playback-bar">
       <div className="flex flex-col gap-1">
         <PlaybackOverlayHost overlays={playbackOverlays} context={extensionContext} />
         <div
@@ -508,8 +508,9 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({ player, extensionConte
           onSelectRange={handleSelectQualityRange}
         />
 
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 w-full text-[12px] font-mono">
-          <div className="flex min-w-0 items-center gap-1 px-0.5">
+        {/* Narrow bars (< 520px) put time and settings on one row and the transport centred below, so the clock is never cut off. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 w-full text-[12px] font-mono @max-[520px]/playback:grid-cols-[minmax(0,1fr)_auto] @max-[520px]/playback:gap-y-1">
+          <div className="flex min-w-0 items-center gap-1 px-0.5 @max-[520px]/playback:col-start-1 @max-[520px]/playback:row-start-1">
             <Button
               type="button"
               variant="ghost"
@@ -542,7 +543,10 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({ player, extensionConte
             />
           </div>
 
-          <div className="flex items-center justify-center gap-1.5">
+          <div
+            data-testid="playback-transport"
+            className="flex items-center justify-center gap-1.5 @max-[520px]/playback:col-span-2 @max-[520px]/playback:row-start-2"
+          >
             <Button
               type="button"
               variant="ghost"
@@ -580,7 +584,7 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({ player, extensionConte
             </Button>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end @max-[520px]/playback:col-start-2 @max-[520px]/playback:row-start-1">
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Menubar
                 value={playbackSettingsMenubarValue}

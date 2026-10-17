@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useIntl } from 'react-intl';
 import type { ColorRepresentation } from 'three';
 import {
   createThreeCanvasRuntime,
@@ -128,11 +129,19 @@ export function ThreeCanvas({
       className={`relative h-full w-full overflow-hidden ${className ?? ''}`}
     >
       {glUnavailable ? (
-        <div className={WEBGL_UNAVAILABLE_OVERLAY_CLASS} data-testid="three-canvas-webgl-unavailable">
-          WebGL unavailable
-        </div>
+        <WebGlUnavailableNotice />
       ) : null}
       <ThreeCanvasContext.Provider value={handle}>{handle ? children : null}</ThreeCanvasContext.Provider>
+    </div>
+  );
+}
+
+/** Only mounted when WebGL fails, so callers without an IntlProvider never reach it. */
+function WebGlUnavailableNotice(): ReactElement {
+  const { formatMessage } = useIntl();
+  return (
+    <div className={WEBGL_UNAVAILABLE_OVERLAY_CLASS} data-testid="three-canvas-webgl-unavailable" role="status">
+      {formatMessage({ id: 'panels.framework.webglUnavailable' })}
     </div>
   );
 }

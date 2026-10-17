@@ -178,7 +178,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <nav className="sticky top-0 z-50 w-full shrink-0 border-b border-border bg-background select-none">
-      <div className="grid h-12 w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-2 gap-y-0 px-4">
+      <div className="grid h-12 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-2 gap-y-0 px-4">
         <div className="flex min-w-0 items-center gap-2 justify-self-start sm:gap-3">
           {showNavbarBrand ? (
             <button
@@ -352,7 +352,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="pointer-events-none flex w-full min-w-0 max-w-[min(100%,36rem)] items-center justify-center gap-2 overflow-hidden">
               {sourceLoading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden /> : null}
               <span
-                className={`block min-w-0 flex-1 truncate text-center text-sm font-medium tracking-tight ${
+                data-testid="rosview-navbar-source-name"
+                className={`pointer-events-auto block min-w-0 flex-1 truncate text-center text-sm font-medium tracking-tight ${
                   sourceLoading ? 'text-muted-foreground' : 'text-foreground'
                 }`}
                 title={centerTitle}

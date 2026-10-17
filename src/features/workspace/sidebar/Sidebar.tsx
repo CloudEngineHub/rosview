@@ -21,8 +21,17 @@ import { groupDatasets } from '@/shared/utils/datasetSources';
 import { formatBytes } from '@/shared/utils/formatBytes';
 import { cn } from '@/shared/lib/utils';
 
+/**
+ * Tabs grow to share the row but never shrink below their label, so a narrow
+ * sidebar or an extension tab never clips a label ("Annotat…"). The tab list
+ * scrolls horizontally instead; in the compact sidebar built-in tabs drop to
+ * icon-only (see `.sidebar-tab-label` in `src/index.css`).
+ */
 const SIDEBAR_TAB_TRIGGER_CLASS =
-  'flex flex-1 items-center justify-center gap-1 border-b-2 border-transparent px-2 py-2 text-xs font-medium transition-colors hover:bg-accent/70 data-[state=active]:border-primary data-[state=active]:bg-background data-[state=active]:text-primary';
+  'flex flex-[1_0_auto] items-center justify-center gap-1 whitespace-nowrap border-b-2 border-transparent px-2 py-2 text-xs font-medium transition-colors hover:bg-accent/70 data-[state=active]:border-primary data-[state=active]:bg-background data-[state=active]:text-primary';
+
+const SIDEBAR_TAB_LIST_CLASS =
+  'flex shrink-0 overflow-x-auto overflow-y-hidden border-b border-border/60 bg-muted/20 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 
 const TOPIC_LIST_SKELETON_ROWS = 8;
 
@@ -50,6 +59,8 @@ interface SidebarProps {
   extensions?: RosViewExtension[];
   /** Tab id to select once on mount when listed in extension or built-in tabs. */
   initialSidebarTab?: string;
+  /** True when the sidebar sits under the panels (narrow container). */
+  stacked?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -63,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   extensionContext,
   extensions = [],
   initialSidebarTab,
+  stacked = false,
 }) => {
   const { formatMessage } = useIntl();
   const topics = useMessagePipeline((state: MessagePipelineState) => state.sortedTopics);
@@ -146,7 +158,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r border-border/70 bg-card [container-name:sidebar] @container"
+      data-stacked={stacked ? 'true' : undefined}
+      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-border/70 bg-card [container-name:sidebar] @container ${
+        stacked ? 'border-t' : 'border-r'
+      }`}
     >
       <Tabs.Root
         value={tabValue}
@@ -163,24 +178,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }}
         className="flex min-h-0 flex-1 flex-col bg-background"
       >
-        <Tabs.List className="flex shrink-0 border-b border-border/60 bg-muted/20">
-          <Tabs.Trigger value="topics" className={SIDEBAR_TAB_TRIGGER_CLASS}>
+        <Tabs.List className={SIDEBAR_TAB_LIST_CLASS}>
+          <Tabs.Trigger
+            value="topics"
+            className={SIDEBAR_TAB_TRIGGER_CLASS}
+            title={formatMessage({ id: 'sidebar.tab.topics' })}
+            aria-label={formatMessage({ id: 'sidebar.tab.topics' })}
+          >
             <Layers size={14} />
-            {formatMessage({ id: 'sidebar.tab.topics' })}
+            <span className="sidebar-tab-label">{formatMessage({ id: 'sidebar.tab.topics' })}</span>
           </Tabs.Trigger>
           {showDatasetsTab ? (
-            <Tabs.Trigger value="datasets" className={SIDEBAR_TAB_TRIGGER_CLASS}>
+            <Tabs.Trigger
+              value="datasets"
+              className={SIDEBAR_TAB_TRIGGER_CLASS}
+              title={formatMessage({ id: 'sidebar.tab.datasets' })}
+              aria-label={formatMessage({ id: 'sidebar.tab.datasets' })}
+            >
               <Database size={14} />
-              {formatMessage({ id: 'sidebar.tab.datasets' })}
+              <span className="sidebar-tab-label">{formatMessage({ id: 'sidebar.tab.datasets' })}</span>
             </Tabs.Trigger>
           ) : null}
-          <Tabs.Trigger value="quality" className={SIDEBAR_TAB_TRIGGER_CLASS}>
+          <Tabs.Trigger
+            value="quality"
+            className={SIDEBAR_TAB_TRIGGER_CLASS}
+            title={formatMessage({ id: 'sidebar.tab.quality' })}
+            aria-label={formatMessage({ id: 'sidebar.tab.quality' })}
+          >
             <AlertTriangle size={14} />
-            {formatMessage({ id: 'sidebar.tab.quality' })}
+            <span className="sidebar-tab-label">{formatMessage({ id: 'sidebar.tab.quality' })}</span>
           </Tabs.Trigger>
-          <Tabs.Trigger value="settings" className={SIDEBAR_TAB_TRIGGER_CLASS}>
+          <Tabs.Trigger
+            value="settings"
+            className={SIDEBAR_TAB_TRIGGER_CLASS}
+            title={formatMessage({ id: 'sidebar.tab.settings' })}
+            aria-label={formatMessage({ id: 'sidebar.tab.settings' })}
+          >
             <Settings2 size={14} />
-            {formatMessage({ id: 'sidebar.tab.settings' })}
+            <span className="sidebar-tab-label">{formatMessage({ id: 'sidebar.tab.settings' })}</span>
           </Tabs.Trigger>
           {extensionTabs.map((tab) => (
             <Tabs.Trigger key={tab.id} value={tab.id} className={SIDEBAR_TAB_TRIGGER_CLASS}>
