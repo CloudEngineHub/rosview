@@ -1445,3 +1445,68 @@ describe('IterablePlayer initialize logging', () => {
     expect(logs.error).toContain('IterablePlayer: initialization failed');
   });
 });
+
+describe('IterablePlayer stepMessage', () => {
+  const OTHER_TOPIC = '/camera/rear/image/compressed';
+
+  function imageAt(topic: string, ms: number): MessageEvent {
+    return { ...makeImageMessageAtMs(ms), topic };
+  }
+
+  it('stepping back while paused announces the new time first, then refreshes every topic at it', async () => {
+    const source = makeSource([]);
+    vi.mocked(source.initialize).mockImplementation(async () => ({
+      ...makeInitialization(),
+      topics: [
+        { name: TOPIC, type: 'sensor_msgs/CompressedImage' },
+        { name: OTHER_TOPIC, type: 'sensor_msgs/CompressedImage' },
+      ],
+    }));
+    // The latest message per topic at or before the requested time.
+    vi.mocked(source.getBackfillMessages).mockImplementation(async ({ time, topics }) => {
+      const ms = time.sec * 1000 + Math.floor(time.nsec / 1_000_000);
+      const frames = [imageAt(TOPIC, 0), imageAt(TOPIC, 400), imageAt(OTHER_TOPIC, 0), imageAt(OTHER_TOPIC, 390)];
+      return topics.flatMap((topic) => {
+        const latest = frames
+          .filter((f) => f.topic === topic && f.receiveTime.sec * 1000 + f.receiveTime.nsec / 1_000_000 <= ms)
+          .at(-1);
+        return latest ? [latest] : [];
+      });
+    });
+    vi.mocked(source.getAdjacentMessage).mockImplementation(async () => imageAt(TOPIC, 400));
+
+    const player = new IterablePlayer(source);
+    await player.initialize({});
+    const events: string[] = [];
+    for (const topic of [TOPIC, OTHER_TOPIC]) {
+      player.registerHighFrequencyConsumer(`panel:${topic}`, {
+        topic,
+        lane: 'video',
+        onLatestMessage: (message) => {
+          events.push(`frame ${message.topic} ${message.receiveTime.nsec / 1_000_000}`);
+        },
+      });
+    }
+    player.seek({ sec: 0, nsec: 500_000_000 });
+    await flushAsyncWork();
+    await flushAsyncWork();
+    player.subscribeCurrentTime((time) => {
+      events.push(`time ${time.nsec / 1_000_000}`);
+    });
+    events.length = 0;
+
+    player.stepMessage(-1);
+    await flushAsyncWork();
+    await flushAsyncWork();
+
+    // Panels clear on a rewind, so the new time must come before the frames
+    // that fill them, and every topic (not only the stepped one) must get one.
+    const timeIndex = events.indexOf('time 400');
+    expect(timeIndex).toBeGreaterThanOrEqual(0);
+    const after = events.slice(timeIndex + 1);
+    expect(after).toContain(`frame ${TOPIC} 400`);
+    expect(after).toContain(`frame ${OTHER_TOPIC} 390`);
+
+    player.close();
+  });
+});
