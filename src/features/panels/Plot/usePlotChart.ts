@@ -6,6 +6,7 @@ import type { Time } from '@/core/types/ros';
 import { scheduleFrame } from '@/shared/utils/rafScheduler';
 import type { PlotDataset, PlotRuntimeSeries } from './datasets';
 import type { PlotConfig } from './defaults';
+import { displaySeriesLabels, type PlotTooltipSeries } from './plotSeriesDisplay';
 import {
   buildPlotSeriesOption,
   createPlotUplotOptions,
@@ -240,6 +241,8 @@ export function usePlotChart({
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const interactionCleanupRef = useRef<(() => void) | null>(null);
   const loadingRef = useRef(!!loading);
+  const mountedYUnitRef = useRef<string | undefined>(undefined);
+  const tooltipSeriesRef = useRef<PlotTooltipSeries[]>([]);
   const manualViewportRef = useRef<PlotViewportState>({ x: false, y: false });
   const xRangeRef = useRef(xRange);
   const onViewportStateChangeRef = useRef(onViewportStateChange);
@@ -424,7 +427,9 @@ export function usePlotChart({
       getCurrentTimeSec: () => currentTimeSecRef.current,
       colors,
       isLoading: () => loadingRef.current,
+      getTooltipSeries: () => tooltipSeriesRef.current,
     });
+    mountedYUnitRef.current = dataset.yUnit;
 
     const chart = mountPlotChart(container, dataset, options, xRange);
     uplotRef.current = chart;
@@ -462,7 +467,16 @@ export function usePlotChart({
     followingViewWidthRef.current = config.followingViewWidthSec;
     xAxisModeRef.current = config.xAxisMode;
 
-    if (!chart || xAxisModeChanged) {
+    const displayLabels = displaySeriesLabels(dataset.series.map((s) => s.label));
+    tooltipSeriesRef.current = dataset.series.map((s, index) => ({
+      label: displayLabels[index] ?? s.label,
+      color: s.color,
+      unit: s.unit,
+      show: !hiddenSeries.has(index),
+    }));
+
+    // The axis title is part of the chart DOM; a unit change needs a remount.
+    if (!chart || xAxisModeChanged || mountedYUnitRef.current !== dataset.yUnit) {
       mountChart();
       return;
     }

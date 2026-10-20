@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useIntl } from 'react-intl';
 import type { Player } from '@/core/types/player';
 import type { Time, TopicInfo } from '@/core/types/ros';
 import type { MessagePipelineState } from '@/core/pipeline/store';
@@ -1858,6 +1859,7 @@ export const ThreeDPanel: React.FC<ThreeDPanelProps> = ({
   urdf,
   topicSettings = [],
 }) => {
+  const { formatMessage } = useIntl();
   const { resolvedTheme } = useRosViewTheme();
   const colors = useMemo(() => getScenePanelThemeColors(resolvedTheme), [resolvedTheme]);
   const resolvedUrdf = urdf ?? defaultUrdfSource();
@@ -1879,7 +1881,7 @@ export const ThreeDPanel: React.FC<ThreeDPanelProps> = ({
       >
         {isMeshLoading
           ? `Loading Mesh ${meshLoadProgress.loaded}/${meshLoadProgress.total} (${meshLoadPercent}%)`
-          : '3D View'}
+          : formatMessage({ id: 'panels.threeD.defaultTitle' })}
       </div>
       <ThreeCanvas
         shadows

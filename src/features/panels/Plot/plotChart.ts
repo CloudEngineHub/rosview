@@ -4,6 +4,7 @@ import type { Time } from '@/core/types/ros';
 import { formatDurationNs } from '@/shared/utils/time';
 import type { PlotDataset, PlotRuntimeSeries } from './datasets';
 import type { PlotXAxisMode } from './defaults';
+import { buildPlotTooltipRows, type PlotTooltipSeries } from './plotSeriesDisplay';
 
 export interface PlotChartColors {
   axisStroke: string;
@@ -215,7 +216,10 @@ export function computeRelativeTimeSplits(
 interface CursorLabelElements {
   x: HTMLDivElement;
   y: HTMLDivElement;
+  tip: HTMLDivElement;
 }
+
+const TOOLTIP_MAX_ROWS = 16;
 
 const cursorLabelsByChart = new WeakMap<uPlot, CursorLabelElements>();
 
@@ -243,9 +247,15 @@ function initCursorLabels(u: uPlot, colors: PlotChartColors): void {
   applyCursorLabelStyle(xLabel, colors);
   applyCursorLabelStyle(yLabel, colors);
 
+  const tip = document.createElement('div');
+  applyCursorLabelStyle(tip, colors);
+  tip.style.padding = '4px 6px';
+  tip.dataset.testid = 'plot-hover-tooltip';
+
   u.over.appendChild(xLabel);
   u.over.appendChild(yLabel);
-  cursorLabelsByChart.set(u, { x: xLabel, y: yLabel });
+  u.over.appendChild(tip);
+  cursorLabelsByChart.set(u, { x: xLabel, y: yLabel, tip });
 }
 
 function hideCursorLabels(u: uPlot): void {
@@ -253,12 +263,14 @@ function hideCursorLabels(u: uPlot): void {
   if (!labels) return;
   labels.x.style.display = 'none';
   labels.y.style.display = 'none';
+  labels.tip.style.display = 'none';
 }
 
 function updateCursorLabels(
   u: uPlot,
   xAxisMode: PlotXAxisMode,
   logStart: Time | undefined,
+  getTooltipSeries?: () => PlotTooltipSeries[],
 ): void {
   const labels = cursorLabelsByChart.get(u);
   if (!labels) return;
@@ -287,6 +299,69 @@ function updateCursorLabels(
   labels.y.style.left = '4px';
   labels.y.style.top = `${cy}px`;
   labels.y.style.transform = 'translateY(-50%)';
+
+  updateHoverTooltip(u, labels.tip, cx, cy, plotW, xAxisMode, logStart, getTooltipSeries);
+}
+
+function updateHoverTooltip(
+  u: uPlot,
+  tip: HTMLDivElement,
+  cx: number,
+  cy: number,
+  plotW: number,
+  xAxisMode: PlotXAxisMode,
+  logStart: Time | undefined,
+  getTooltipSeries?: () => PlotTooltipSeries[],
+): void {
+  const idx = u.cursor.idx;
+  if (!getTooltipSeries || idx == null) {
+    tip.style.display = 'none';
+    return;
+  }
+  const meta = getTooltipSeries();
+  const shown = meta.map((entry, i) => ({ ...entry, show: entry.show && u.series[i + 1]?.show !== false }));
+  const rows = buildPlotTooltipRows(u.data as ArrayLike<number | null>[], idx, shown);
+  if (rows.length === 0) {
+    tip.style.display = 'none';
+    return;
+  }
+  tip.replaceChildren();
+  const xVal = u.data[0]?.[idx];
+  if (xVal != null) {
+    const head = document.createElement('div');
+    head.style.opacity = '0.7';
+    head.textContent = formatPlotXValue(xVal, xAxisMode, logStart);
+    tip.appendChild(head);
+  }
+  for (const row of rows.slice(0, TOOLTIP_MAX_ROWS)) {
+    const line = document.createElement('div');
+    line.style.display = 'flex';
+    line.style.alignItems = 'center';
+    line.style.gap = '6px';
+    const swatch = document.createElement('span');
+    swatch.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:2px;flex:none;background:${row.color}`;
+    const name = document.createElement('span');
+    name.textContent = row.label;
+    name.style.flex = '1';
+    const val = document.createElement('span');
+    val.textContent = row.value;
+    val.style.fontVariantNumeric = 'tabular-nums';
+    line.append(swatch, name, val);
+    tip.appendChild(line);
+  }
+  if (rows.length > TOOLTIP_MAX_ROWS) {
+    const more = document.createElement('div');
+    more.style.opacity = '0.7';
+    more.textContent = `+${rows.length - TOOLTIP_MAX_ROWS}`;
+    tip.appendChild(more);
+  }
+  tip.style.display = 'block';
+  // Flip to the left of the cursor when the right side would overflow the plot.
+  const width = tip.offsetWidth;
+  const flip = cx + 12 + width > plotW && cx - 12 - width > 0;
+  tip.style.left = `${flip ? cx - 12 - width : cx + 12}px`;
+  const maxTop = Math.max(0, u.bbox.height - tip.offsetHeight);
+  tip.style.top = `${Math.min(Math.max(0, cy - tip.offsetHeight / 2), maxTop)}px`;
 }
 
 function destroyCursorLabels(u: uPlot): void {
@@ -294,6 +369,7 @@ function destroyCursorLabels(u: uPlot): void {
   if (!labels) return;
   labels.x.remove();
   labels.y.remove();
+  labels.tip.remove();
   cursorLabelsByChart.delete(u);
 }
 
@@ -336,6 +412,8 @@ export interface PlotChartBuildContext {
    * behaviour resumes on the next setData/redraw.
    */
   isLoading?: () => boolean;
+  /** Current series labels/colors/units for the hover tooltip (read on every cursor move). */
+  getTooltipSeries?: () => PlotTooltipSeries[];
 }
 
 export type PlotUplotOptions = Omit<uPlot.Options, 'width' | 'height'>;
@@ -410,7 +488,7 @@ export function createPlotUplotOptions(
   hiddenSeries: Set<number>,
   ctx: PlotChartBuildContext,
 ): PlotUplotOptions {
-  const { colors, xAxisMode, xRange, logStart, getCurrentTimeSec, panelId } = ctx;
+  const { colors, xAxisMode, xRange, logStart, getCurrentTimeSec, panelId, getTooltipSeries } = ctx;
 
   const useRelativeTimeAxis = xAxisMode === 'timestamp' && logStart != null;
   const logStartSec = useRelativeTimeAxis ? timeToSec(logStart) : undefined;
@@ -446,6 +524,9 @@ export function createPlotUplotOptions(
         grid: { show: true, stroke: colors.gridStroke, width: 1 },
         stroke: colors.axisStroke,
         font: '10px sans-serif',
+        ...(dataset.yUnit
+          ? { label: dataset.yUnit, labelSize: 14, labelFont: '10px sans-serif', size: 56 }
+          : {}),
       },
     ],
     cursor: {
@@ -467,7 +548,7 @@ export function createPlotUplotOptions(
     },
     hooks: {
       ready: [(u) => initCursorLabels(u, colors)],
-      setCursor: [(u) => updateCursorLabels(u, xAxisMode, logStart)],
+      setCursor: [(u) => updateCursorLabels(u, xAxisMode, logStart, getTooltipSeries)],
       destroy: [(u) => destroyCursorLabels(u)],
       draw: [(u) => drawPlayhead(u, getCurrentTimeSec, colors.playheadStroke)],
     },

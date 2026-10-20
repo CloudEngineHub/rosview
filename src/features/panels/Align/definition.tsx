@@ -12,7 +12,7 @@ const AlignPanel = lazy(async () => {
 
 export const alignPanelDefinition: PanelDefinition<AlignConfig> = {
   type: 'Align',
-  defaultTitle: 'Align',
+  defaultTitle: 'Time alignment',
   createDefaultConfig: defaultAlignConfig,
   configSchema: { version: 1, parse: parseAlignConfig },
   render: ({ player, panelId, config, setConfig }) => (

@@ -53,6 +53,7 @@ export default class CachedFilelike implements Readable {
   #onDownloadProgress?: (info: DownloadProgressInfo) => void;
   #transferredBytes = 0;
   #currentRequestReceived = 0;
+  #reportedLoadedBytes = 0;
 
   #currentConnection: { stream: FileStream; remainingRange: Range; kind: "read" | "prefetch" } | undefined;
 
@@ -339,9 +340,8 @@ export default class CachedFilelike implements Readable {
     const stream = this.#fileReader.fetch(range.start, range.end - range.start);
     this.#currentConnection = { stream, remainingRange: range, kind };
     this.#currentRequestReceived = 0;
-    const requestTotal = range.end - range.start;
 
-    stream.on("progress", (received: number, total: number) => {
+    stream.on("progress", (received: number) => {
       const currentConnection = this.#currentConnection;
       if (!currentConnection || stream !== currentConnection.stream) {
         return;
@@ -352,7 +352,7 @@ export default class CachedFilelike implements Readable {
         this.#transferredBytes += delta;
         this.#currentRequestReceived = safeReceived;
       }
-      this.#reportDownloadProgress(safeReceived, total > 0 ? total : requestTotal);
+      this.#reportDownloadProgress();
     });
 
     stream.on("error", (error: Error) => {
@@ -414,8 +414,8 @@ export default class CachedFilelike implements Readable {
       bytesRead += chunk.byteLength;
       if (this.#currentRequestReceived === 0 && chunk.byteLength > 0) {
         this.#transferredBytes += chunk.byteLength;
-        this.#reportDownloadProgress(bytesRead, requestTotal);
       }
+      this.#reportDownloadProgress();
 
       if (this.#virtualBuffer.hasData(range.start, range.end)) {
         stream.destroy();
@@ -432,10 +432,23 @@ export default class CachedFilelike implements Readable {
     });
   }
 
-  #reportDownloadProgress(loadedBytes: number, totalBytes: number): void {
+  /**
+   * Report file-level progress: bytes of the file already held in the cache
+   * against the (stable) file size. Per-request figures made the total drift
+   * between fetch blocks (e.g. 50.0 MB then 44.5 MB for the last block). When
+   * the file size is unknown the total is 0 so UIs show only bytes loaded.
+   */
+  #reportDownloadProgress(): void {
+    const fileSize = this.#fileSize ?? 0;
+    let held = 0;
+    for (const range of this.#virtualBuffer.getRangesWithData()) {
+      held += range.end - range.start;
+    }
+    const capped = fileSize > 0 ? Math.min(fileSize, held) : held;
+    this.#reportedLoadedBytes = Math.max(this.#reportedLoadedBytes, capped);
     this.#onDownloadProgress?.({
-      loadedBytes,
-      totalBytes,
+      loadedBytes: this.#reportedLoadedBytes,
+      totalBytes: fileSize,
       transferredBytes: this.#transferredBytes,
     });
   }
