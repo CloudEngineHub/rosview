@@ -180,7 +180,7 @@ describe('CachedFilelike input validation', () => {
 });
 
 describe('CachedFilelike download progress', () => {
-  it('forwards stream progress to onDownloadProgress', async () => {
+  it('reports cumulative bytes against a stable file-size total across fetch blocks', async () => {
     const reader = new TestFileReader();
     const updates: Array<{ loadedBytes: number; totalBytes: number; transferredBytes: number }> = [];
     const filelike = new CachedFilelike({
@@ -190,15 +190,24 @@ describe('CachedFilelike download progress', () => {
       onDownloadProgress: (info) => updates.push({ ...info }),
     });
 
-    const readPromise = filelike.read(0, 8);
+    const first = filelike.read(0, 8);
     await flushAsyncWork();
-    expect(reader.streams).toHaveLength(1);
-
-    reader.streams[0].emitProgress(4, 8);
+    reader.streams[0].emitProgress(8, 8);
     reader.streams[0].emitData([0, 1, 2, 3, 4, 5, 6, 7]);
-    await readPromise;
+    await first;
 
-    expect(updates.some((update) => update.loadedBytes === 4 && update.totalBytes === 8)).toBe(true);
+    const second = filelike.read(8, 4);
+    await flushAsyncWork();
+    // A per-request total would be 8 or 4 here; the file total must stay 32.
+    reader.streams[1].emitProgress(4, 4);
+    reader.streams[1].emitData([8, 9, 10, 11]);
+    await second;
+
+    expect(updates.length).toBeGreaterThan(0);
+    expect(new Set(updates.map((u) => u.totalBytes))).toEqual(new Set([32]));
+    const loaded = updates.map((u) => u.loadedBytes);
+    expect([...loaded].sort((a, b) => a - b)).toEqual(loaded);
+    expect(loaded.at(-1)).toBe(12);
     expect(updates[0].transferredBytes).toBeGreaterThan(0);
   });
 });

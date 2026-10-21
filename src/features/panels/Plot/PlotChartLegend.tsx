@@ -12,6 +12,7 @@ import {
 import { usePlotLegendEntries, type PlotLegendEntry } from './plotPanelRuntimeStore';
 
 const COLLAPSED_LIMIT = 1;
+const SEARCH_THRESHOLD = 8;
 
 interface PlotChartLegendProps {
   panelId: string;
@@ -110,15 +111,11 @@ export function PlotChartLegend({
 }: PlotChartLegendProps): React.ReactNode {
   const { formatMessage } = useIntl();
   const entries = usePlotLegendEntries(panelId);
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(true);
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => filterPlotLegendEntries(entries, query), [entries, query]);
   const hiddenKeys = config.hiddenLegendKeys;
-  const collapsedEntries = useMemo(
-    () => collapsedPlotLegendEntries(entries, hiddenKeys),
-    [entries, hiddenKeys],
-  );
   const allKeys = useMemo(() => entries.map((entry) => entry.key), [entries]);
   const visibleCount = visiblePlotLegendCount(entries, hiddenKeys);
 
@@ -136,17 +133,18 @@ export function PlotChartLegend({
     setHiddenKeys(setOnlyPlotLegendVisible(hiddenKeys, allKeys, entry.key));
   };
 
+  const showTools = entries.length > SEARCH_THRESHOLD;
+
   return (
     <div
-      className={`absolute left-2 top-2 z-20 w-80 max-w-[min(28rem,70%)] rounded border border-border bg-card/80 text-foreground opacity-65 shadow-xs backdrop-blur-sm transition-opacity hover:bg-card/95 hover:opacity-100 focus-within:bg-card/95 focus-within:opacity-100 ${
-        expanded ? 'bottom-2 flex flex-col' : ''
-      }`}
+      className="flex max-h-[45%] shrink-0 flex-col border-t border-border bg-card/60 text-foreground"
+      data-testid="plot-legend"
       onClick={stopPanelInteraction}
       onDoubleClick={stopPanelInteraction}
       onPointerDown={stopPanelInteraction}
       onWheel={stopPanelInteraction}
     >
-      <div className="flex items-center gap-2 border-b border-border/70 px-2 py-1">
+      <div className="flex shrink-0 items-center gap-2 px-2 py-0.5">
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium">
           {formatMessage(
             { id: 'panels.plot.legend.visibleCount' },
@@ -155,48 +153,46 @@ export function PlotChartLegend({
         </span>
         <button
           type="button"
-          className="inline-flex h-5 items-center gap-1 rounded px-1 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
-          onClick={() => setExpanded((value) => !value)}
-          title={formatMessage({
-            id: expanded ? 'panels.plot.legend.collapse' : 'panels.plot.legend.expand',
-          })}
-          aria-label={formatMessage({
-            id: expanded ? 'panels.plot.legend.collapse' : 'panels.plot.legend.expand',
-          })}
+          className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-accent"
+          onClick={() => setHiddenKeys(setPlotLegendGroupVisible(hiddenKeys, allKeys, true))}
         >
-          {entries.length > COLLAPSED_LIMIT && !expanded ? `+${entries.length - COLLAPSED_LIMIT}` : null}
-          {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          {formatMessage({ id: 'panels.plot.legend.showAll' })}
+        </button>
+        <button
+          type="button"
+          className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-accent"
+          onClick={() => setHiddenKeys(setPlotLegendGroupVisible(hiddenKeys, allKeys, false))}
+        >
+          {formatMessage({ id: 'panels.plot.legend.hideAll' })}
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          title={formatMessage({ id: open ? 'panels.plot.legend.collapse' : 'panels.plot.legend.expand' })}
+          aria-label={formatMessage({ id: open ? 'panels.plot.legend.collapse' : 'panels.plot.legend.expand' })}
+        >
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
         </button>
       </div>
-
-      {expanded ? (
+      {open ? (
         <>
-          <div className="space-y-1 border-b border-border/70 p-2">
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="h-7 w-full rounded border border-border bg-background px-2 text-[11px] outline-hidden focus:border-primary"
-              placeholder={formatMessage({ id: 'panels.plot.legend.searchPlaceholder' })}
-              aria-label={formatMessage({ id: 'panels.plot.legend.searchPlaceholder' })}
-            />
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-accent"
-                onClick={() => setHiddenKeys(setPlotLegendGroupVisible(hiddenKeys, allKeys, true))}
-              >
-                {formatMessage({ id: 'panels.plot.legend.showAll' })}
-              </button>
-              <button
-                type="button"
-                className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-accent"
-                onClick={() => setHiddenKeys(setPlotLegendGroupVisible(hiddenKeys, allKeys, false))}
-              >
-                {formatMessage({ id: 'panels.plot.legend.hideAll' })}
-              </button>
+          {showTools && (
+            <div className="shrink-0 px-2 pb-1">
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="h-6 w-full rounded border border-border bg-background px-2 text-[11px] outline-hidden focus:border-primary"
+                placeholder={formatMessage({ id: 'panels.plot.legend.searchPlaceholder' })}
+                aria-label={formatMessage({ id: 'panels.plot.legend.searchPlaceholder' })}
+              />
             </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-1">
+          )}
+          <div
+            className="min-h-0 flex-1 overflow-y-auto p-1"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(9.5rem, 1fr))' }}
+          >
             {filtered.length === 0 ? (
               <div className="px-2 py-2 text-[11px] text-muted-foreground">
                 {formatMessage({ id: 'panels.plot.legend.noMatches' })}
@@ -215,18 +211,7 @@ export function PlotChartLegend({
             )}
           </div>
         </>
-      ) : (
-        <div className="p-1">
-          {collapsedEntries.map((entry) => (
-            <LegendRow
-              key={entry.key}
-              entry={entry}
-              visible={isPlotLegendVisible(hiddenKeys, entry.key)}
-              onToggle={() => toggleEntry(entry)}
-            />
-          ))}
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

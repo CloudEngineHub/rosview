@@ -82,7 +82,7 @@
   "panels.rawMessages.defaultTitle": "Raw",
   "panels.timeline.defaultTitle": "Timeline",
   "panels.topicGraph.defaultTitle": "Topic Graph",
-  "panels.align.defaultTitle": "Align",
+  "panels.align.defaultTitle": "Time alignment",
   "panels.unavailable.defaultTitle": "Unavailable",
   "panels.urdfDebug.defaultTitle": "URDF Debug",
   "panels.jointStatePlot.fallback.missingHeaderStamp": "header.stamp missing; fell back to receiveTime",

@@ -10,6 +10,8 @@ export interface PlotRuntimeSeries {
   lineStyle: PlotLineStyle;
   lineSize: number;
   enabled: boolean;
+  /** Physical unit inferred from the message schema; undefined when unknown. */
+  unit?: string;
 }
 
 export interface PlotDataset {
@@ -20,6 +22,8 @@ export interface PlotDataset {
   /** Share of raw X-axis samples kept after downsampling; 1 when nothing was dropped. */
   sampleRatio: number;
   warnings: PlotDatasetWarning[];
+  /** Y-axis unit shared by every series; undefined when unknown or mixed-with-unknown. */
+  yUnit?: string;
 }
 
 export interface BuildPlotDatasetOptions {

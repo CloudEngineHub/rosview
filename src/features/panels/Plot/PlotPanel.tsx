@@ -27,6 +27,8 @@ import {
   setPlotLegendEntries,
 } from './plotPanelRuntimeStore';
 import { PlotChartLegend } from './PlotChartLegend';
+import { displaySeriesLabels } from './plotSeriesDisplay';
+import { annotatePlotUnits } from './plotUnits';
 import { formatPlotDatasetWarning } from './plotWarnings';
 import { hasManualPlotViewport, usePlotChart, type PlotViewportState } from './usePlotChart';
 import { usePlotPanelData } from './usePlotPanelData';
@@ -121,7 +123,7 @@ export const PlotPanel: React.FC<PlotPanelProps> = ({ player, panelId, config, s
     endTime,
   });
 
-  const { dataset, loading, progress, error } = usePlotPanelData({
+  const { dataset: rawDataset, loading, progress, error } = usePlotPanelData({
     player,
     config,
     activeTopics,
@@ -130,6 +132,11 @@ export const PlotPanel: React.FC<PlotPanelProps> = ({ player, panelId, config, s
     endTime,
     randomAccessByTopic,
   });
+
+  const dataset = useMemo(
+    () => annotatePlotUnits(rawDataset, config.series, topicByName),
+    [rawDataset, config.series, topicByName],
+  );
 
   const hiddenSeries = useMemo(
     () => hiddenSeriesIndices(dataset.series, config.hiddenLegendKeys),
@@ -162,9 +169,10 @@ export const PlotPanel: React.FC<PlotPanelProps> = ({ player, panelId, config, s
   }, [player, panelId, activeTopics]);
 
   useEffect(() => {
-    const entries = dataset.series.map((series) => ({
+    const displayLabels = displaySeriesLabels(dataset.series.map((series) => series.label));
+    const entries = dataset.series.map((series, index) => ({
       key: series.key,
-      label: series.label,
+      label: displayLabels[index] ?? series.label,
       color: series.color,
     }));
     setPlotLegendEntries(panelId, entries);
