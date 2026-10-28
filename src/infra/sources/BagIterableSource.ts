@@ -13,6 +13,7 @@ import type {
 import type { GetAdjacentMessageArgs, IIterableSource } from "./IIterableSource";
 import type { MessageIteratorArgs, GetBackfillMessagesArgs } from '@/infra/workers/types';
 import { loadDecompressHandlers } from "./decompressHandlers";
+import { attachMsgpackPayload, isByteArraySchema } from "./msgpackPayload";
 import { addMs, toNano } from '@/shared/utils/time';
 
 /**
@@ -191,7 +192,7 @@ export class BagIterableSource implements IIterableSource {
       let deserialized: unknown = bagMsgEvent.data;
       if (reader) {
         try {
-          deserialized = reader.readMessage(bagMsgEvent.data);
+          deserialized = readBagMessage(reader, schemaName, bagMsgEvent.data);
         } catch (e) {
           console.warn(`BagIterableSource: deserialize failed for ${bagMsgEvent.topic}`, e);
         }
@@ -229,7 +230,7 @@ export class BagIterableSource implements IIterableSource {
           let deserialized: unknown = bagMsgEvent.data;
           if (reader) {
             try {
-              deserialized = reader.readMessage(bagMsgEvent.data);
+              deserialized = readBagMessage(reader, schemaName, bagMsgEvent.data);
             } catch {
               /* keep raw */
             }
@@ -276,7 +277,7 @@ export class BagIterableSource implements IIterableSource {
       let deserialized: unknown = bagMsgEvent.data;
       if (reader) {
         try {
-          deserialized = reader.readMessage(bagMsgEvent.data);
+          deserialized = readBagMessage(reader, schemaName, bagMsgEvent.data);
         } catch {
           /* keep raw */
         }
@@ -292,4 +293,9 @@ export class BagIterableSource implements IIterableSource {
     }
     return null;
   }
+}
+
+function readBagMessage(reader: MessageReader, schemaName: string, data: Uint8Array): unknown {
+  const message = reader.readMessage(data);
+  return isByteArraySchema(schemaName) ? attachMsgpackPayload(message) : message;
 }

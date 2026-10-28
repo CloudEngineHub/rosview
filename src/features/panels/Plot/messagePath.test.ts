@@ -135,6 +135,29 @@ describe('extractPlotPathValues', () => {
   });
 });
 
+describe('latency modifiers', () => {
+  const message = {
+    msgpack: { body_recv_ns: 2_046_686_847_106, retarget_done_ns: 2_046_708_995_666, source_ns: 1_793_123_416_161_868_032 },
+  };
+
+  it('subtracts another field and converts ns to ms', () => {
+    const [item] = extractPlotPathValues(message, 'msgpack.retarget_done_ns@sub(msgpack.body_recv_ns)@ns2ms');
+    expect(item?.value).toBeCloseTo(22.14856, 5);
+  });
+
+  it('resolves $receive_ns from the event receive time', () => {
+    const receiveTime = { sec: 1_793_123_416, nsec: 178_119_231 };
+    const [item] = extractPlotPathValues(message, '$receive_ns@sub(msgpack.source_ns)@ns2ms', { receiveTime });
+    // Epoch nanoseconds exceed 2^53; sub-microsecond rounding is expected.
+    expect(item?.value).toBeCloseTo(16.251, 2);
+    expect(extractPlotPathValues(message, '$receive_ns@ns2ms')).toEqual([]);
+  });
+
+  it('drops the point when the subtrahend is missing', () => {
+    expect(extractPlotPathValues(message, 'msgpack.retarget_done_ns@sub(msgpack.nope)')).toEqual([]);
+  });
+});
+
 describe('isArrayLikePlotPath', () => {
   it('detects [:] slice as array-like', () => {
     expect(isArrayLikePlotPath('position[:]')).toBe(true);

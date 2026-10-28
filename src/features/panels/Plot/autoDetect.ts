@@ -3,6 +3,8 @@ import {
   batteryStateAdapter,
   jointStateAdapter,
   laserScanAdapter,
+  lowCmdAdapter,
+  lowStateAdapter,
   multiArrayAdapter,
   numericArrayAdapter,
   odometryAdapter,
@@ -35,6 +37,8 @@ const ADAPTERS: Record<PlotAdapterId, PlotTypeAdapter> = {
   wrench: wrenchAdapter,
   odometry: odometryAdapter,
   tfMessage: tfMessageAdapter,
+  lowState: lowStateAdapter,
+  lowCmd: lowCmdAdapter,
 };
 
 export function detectPlotPaths(args: {

@@ -61,13 +61,15 @@
 | `flatbuffer` | `flatbuffer` | FlatBuffers schema 解析 |
 | `json` | `jsonschema` 或无 | `TextDecoder` + `JSON.parse` |
 
+`std_msgs/ByteMultiArray` / `UInt8MultiArray` 的 `data` 若能完整解码为 msgpack map，会额外暴露为 `msgpack` 字段（保留原始 `data`），供 Plot、RawMessages、3D 按字段访问（`src/infra/sources/msgpackPayload.ts`）。
+
 ### 2.3 面板系统（首批 6 种）
 
 | 面板类型 | 说明 | 订阅的典型 Topic 类型 |
 |----------|------|----------------------|
-| **Image** | 显示相机图像流（JPEG/PNG/H264 解码） | `sensor_msgs/Image`, `sensor_msgs/CompressedImage` |
+| **Image** | 显示相机图像流（JPEG/PNG/H264 解码；原始 RGB/BGR、mono、深度、Bayer、UYVY/YUYV、NV12/NV21） | `sensor_msgs/Image`, `sensor_msgs/CompressedImage` |
 | **Plot** | 数值曲线图，支持多 Topic 叠加 | 任意含数值字段的消息（如 `std_msgs/Float64`） |
-| **3D** | 点云、URDF 模型、TF 坐标变换可视化 | `sensor_msgs/PointCloud2`, `tf2_msgs/TFMessage`, URDF |
+| **3D** | 点云、URDF 模型、TF 坐标变换、BVH / xrobot 人体骨架可视化 | `sensor_msgs/PointCloud2`, `tf2_msgs/TFMessage`, URDF |
 | **RawMessages** | 原始消息 JSON 树形查看器 | 任意 Topic |
 | **Joints** | 机器人关节状态可视化（角度/力矩仪表盘） | `sensor_msgs/JointState` |
 | **TopicGraph** | Topic 与节点的拓扑关系图 | 元数据（Topic 列表 + Publisher/Subscriber 关系） |

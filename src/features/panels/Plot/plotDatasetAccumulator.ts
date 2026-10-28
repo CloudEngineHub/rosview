@@ -207,7 +207,7 @@ export class PlotDatasetAccumulator {
           ).time,
         ),
       );
-      const values = extractPlotPathValues(event.message, series.path);
+      const values = extractPlotPathValues(event.message, series.path, { receiveTime: event.receiveTime });
       if (values.length > 0) {
         this._timestampFoundBySeries.set(series.id, true);
       }
@@ -226,7 +226,7 @@ export class PlotDatasetAccumulator {
         continue;
       }
       const xs = extractXValues(event.message, xAxisPath);
-      const ys = extractPlotPathValues(event.message, series.path);
+      const ys = extractPlotPathValues(event.message, series.path, { receiveTime: event.receiveTime });
       const count = Math.min(xs.length, ys.length);
       if (xs.length !== ys.length) {
         this._addWarning({

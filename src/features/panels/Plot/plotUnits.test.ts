@@ -21,6 +21,21 @@ describe('inferPlotUnit', () => {
   });
 });
 
+describe('inferPlotUnit for robot low-level and latency paths', () => {
+  it('labels Booster LowState / LowCmd motor and IMU fields', () => {
+    expect(inferPlotUnit('booster_interface/msg/LowState', 'motor_state_serial[:].q')).toBe('rad');
+    expect(inferPlotUnit('booster_interface/msg/LowState', 'motor_state_serial[:].tau_est')).toBe('N·m');
+    expect(inferPlotUnit('booster_interface/msg/LowState', 'motor_state_serial[:].temperature')).toBe('°C');
+    expect(inferPlotUnit('booster_interface/msg/LowState', 'imu_state.acc[:]')).toBe('m/s²');
+    expect(inferPlotUnit('booster_interface/msg/LowCmd', 'motor_cmd[:].kp')).toBeUndefined();
+    expect(inferPlotUnit('booster_interface/msg/LowState', 'motor_state_serial[:].q@rad2deg')).toBeUndefined();
+  });
+
+  it('labels stamp differences as milliseconds', () => {
+    expect(inferPlotUnit('std_msgs/msg/ByteMultiArray', 'msgpack.a_ns@sub(msgpack.b_ns)@ns2ms')).toBe('ms');
+  });
+});
+
 describe('combinePlotUnits', () => {
   it('joins distinct units and drops the label when any is unknown', () => {
     expect(combinePlotUnits(['rad', 'rad'])).toBe('rad');

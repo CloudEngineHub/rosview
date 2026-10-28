@@ -117,3 +117,18 @@ Open the **Annotations** sidebar tab to use the built-in interval labeling workf
 | **3D view is empty** | Ensure the `/tf` or `/tf_static` topic is present in the recording and the 3D panel is subscribed to it. |
 | **WASM decoders fail** | Some browsers block `SharedArrayBuffer` without the correct COOP/COEP headers. Host the SPA with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`. |
 | **Remote file starts slowly** | The server may not support `Range` requests — the full file must be downloaded before playback can start. Check the server's `Accept-Ranges` response header. |
+
+---
+
+### 7. Plot Field Paths
+
+A Plot series path selects numeric fields (`position[:]`, `motor_state_serial[:].q`, `imu_state.rpy[0]`) and may end with `@` modifiers applied in order:
+
+| Modifier | Effect |
+|----------|--------|
+| `@derivative` | Rate of change between consecutive messages |
+| `@abs`, `@rad2deg`, `@deg2rad`, `@sqrt`, … | Per-value math functions |
+| `@sub(<path>)` | Subtract another field of the same message, e.g. `msgpack.retarget_done_ns@sub(msgpack.body_recv_ns)` |
+| `@ns2ms` | Nanoseconds → milliseconds (the Y axis is labelled `ms`) |
+
+`$receive_ns` is the message receive (log) time in nanoseconds, so `$receive_ns@sub(msgpack.source_ns)@ns2ms` plots how long a wall-clock-stamped sample took to reach the recorder. For `std_msgs/ByteMultiArray` topics whose payload is msgpack, the field picker offers these pipeline latency curves automatically, pairing only stamps from the same clock.

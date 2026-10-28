@@ -1,5 +1,5 @@
 import type { TopicInfo } from '@/core/types/ros';
-import { hasDerivativeModifier } from './messagePath';
+import { hasDerivativeModifier, parsePlotPath } from './messagePath';
 import type { PlotDataset, PlotRuntimeSeries } from './types';
 
 /** `sensor_msgs/msg/JointState` and `sensor_msgs/JointState` both normalize to `sensor_msgs/JointState`. */
@@ -12,6 +12,21 @@ const JOINT_STATE_UNITS: Record<string, string> = {
   velocity: 'rad/s',
   effort: 'N·m',
 };
+
+/** Per-motor and IMU fields of robot low-level state / command messages. */
+const LOW_LEVEL_UNITS: Record<string, string> = {
+  q: 'rad',
+  dq: 'rad/s',
+  ddq: 'rad/s²',
+  tau: 'N·m',
+  tau_est: 'N·m',
+  temperature: '°C',
+  rpy: 'rad',
+  gyro: 'rad/s',
+  acc: 'm/s²',
+};
+
+const LOW_LEVEL_SCHEMAS = new Set(['booster_interface/LowState', 'booster_interface/LowCmd']);
 
 const POSE_LIKE_SCHEMAS = new Set([
   'geometry_msgs/Pose',
@@ -33,8 +48,15 @@ const POSE_LIKE_SCHEMAS = new Set([
  */
 export function inferPlotUnit(schemaName: string | undefined, path: string): string | undefined {
   if (!schemaName || hasDerivativeModifier(path)) return undefined;
+  // `@ns2ms` closes a stamp difference: the result is a duration whatever the fields were.
+  if (parsePlotPath(path).modifiers.at(-1) === 'ns2ms') return 'ms';
   const schema = normalizeSchemaName(schemaName);
   const trimmed = path.trim().replace(/^\./, '');
+  if (LOW_LEVEL_SCHEMAS.has(schema)) {
+    if (parsePlotPath(trimmed).modifiers.length > 0) return undefined;
+    const field = /([A-Za-z_]+)(\[[^\]]*\])?$/.exec(trimmed)?.[1];
+    return field ? LOW_LEVEL_UNITS[field] : undefined;
+  }
   if (schema === 'sensor_msgs/JointState') {
     const field = /^[A-Za-z_]+/.exec(trimmed)?.[0];
     return field ? JOINT_STATE_UNITS[field] : undefined;

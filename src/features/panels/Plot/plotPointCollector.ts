@@ -144,7 +144,7 @@ export function collectTimestampPoints(
       const x = quantizePlotX(
         timeToSec(resolvePlotEventTimestamp(event, series.timestampMode, logStart, logEnd).time),
       );
-      const values = extractPlotPathValues(event.message, series.path);
+      const values = extractPlotPathValues(event.message, series.path, { receiveTime: event.receiveTime });
       for (const item of values) {
         pushPoint(buckets, series, item.key, item.label, x, item.value);
         foundForSeries = true;
@@ -196,7 +196,7 @@ export function collectCustomPoints(
 
     for (const event of sourceEvents) {
       const xs = extractXValues(event.message, xAxisPath);
-      const ys = extractPlotPathValues(event.message, series.path);
+      const ys = extractPlotPathValues(event.message, series.path, { receiveTime: event.receiveTime });
       const count = Math.min(xs.length, ys.length);
       if (xs.length !== ys.length) {
         warnings.push({

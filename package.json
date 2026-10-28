@@ -1,6 +1,6 @@
 {
   "name": "@ioai/rosview",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "description": "High-performance robotics data visualization for MCAP, ROS bag, ROS2 db3, HDF5 and BVH — embeddable React component and standalone SPA",
   "keywords": [
     "ros",
@@ -52,7 +52,8 @@
     "node": ">=18"
   },
   "overrides": {
-    "@foxglove/rosmsg": "^5.0.5"
+    "@foxglove/rosmsg": "^5.0.5",
+    "zod": "^4.6.7"
   },
   "scripts": {
     "dev": "vite",
@@ -94,6 +95,7 @@
     "@mcap/browser": "^1.1.0",
     "@mcap/core": "^2.0.2",
     "@microsoft/api-extractor": "^7.58.12",
+    "@msgpack/msgpack": "^3.1.3",
     "@playwright/test": "^1.62.1",
     "@radix-ui/react-collapsible": "^1.1.20",
     "@radix-ui/react-dialog": "^1.1.23",
@@ -128,7 +130,7 @@
     "fflate": "^0.8.2",
     "flatbuffers": "^25.9.23",
     "globals": "^17.11.0",
-    "happy-dom": "^20.11.2",
+    "happy-dom": "^21.0.4",
     "intervals-fn": "^3.0.3",
     "lucide-react": "^1.32.0",
     "lz4js": "^0.2.0",

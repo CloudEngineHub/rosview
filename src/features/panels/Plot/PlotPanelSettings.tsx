@@ -48,11 +48,16 @@ interface FieldTreeNode {
   children: FieldTreeNode[];
 }
 
+/** Tree segments of a field path; `@` modifiers (which may contain dotted paths) stay on the leaf. */
 function pathSegments(path: string): string[] {
-  return path
+  const at = path.indexOf('@');
+  const source = at < 0 ? path : path.slice(0, at);
+  const segments = source
     .split('.')
     .map((segment) => segment.trim())
     .filter(Boolean);
+  if (at >= 0 && segments.length > 0) segments[segments.length - 1] += path.slice(at);
+  return segments;
 }
 
 function buildFieldTree(paths: string[]): FieldTreeNode[] {
