@@ -67,13 +67,15 @@ ROS View is a **browser-native** playback and visualization tool for robotics re
 | `flatbuffer` | `flatbuffer` | FlatBuffers schema parsing |
 | `json` | `jsonschema` or none | `TextDecoder` + `JSON.parse` |
 
+`std_msgs/ByteMultiArray` / `UInt8MultiArray` payloads that decode cleanly as a msgpack map are additionally exposed as a `msgpack` field (raw `data` is kept), so Plot, RawMessages and 3D can address their fields (`src/infra/sources/msgpackPayload.ts`).
+
 ### 2.3 Panel System (Initial 6 Types)
 
 | Panel | Description | Typical Topics |
 |-------|-------------|----------------|
-| **Image** | Camera image stream (JPEG/PNG/H264 decode) | `sensor_msgs/Image`, `sensor_msgs/CompressedImage` |
+| **Image** | Camera image stream (JPEG/PNG/H264 decode; raw RGB/BGR, mono, depth, Bayer, UYVY/YUYV, NV12/NV21) | `sensor_msgs/Image`, `sensor_msgs/CompressedImage` |
 | **Plot** | Numeric time-series chart, multiple topics overlay | Any message with numeric fields |
-| **3D** | Point cloud, URDF model, TF transform visualization | `sensor_msgs/PointCloud2`, `tf2_msgs/TFMessage`, URDF |
+| **3D** | Point cloud, URDF model, TF transform, BVH / xrobot human skeleton visualization | `sensor_msgs/PointCloud2`, `tf2_msgs/TFMessage`, URDF |
 | **RawMessages** | Raw message JSON tree viewer | Any topic |
 | **Joints** | Robot joint state visualization (angle/torque gauges) | `sensor_msgs/JointState` |
 | **TopicGraph** | Topology graph of topics and nodes | Metadata (topic list + publisher/subscriber relationships) |

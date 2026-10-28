@@ -115,3 +115,18 @@ https://rosview.com?url=https://your-server.com/recording.mcap
 | **3D 视图为空** | 确保录制文件包含 `/tf` 或 `/tf_static` 话题，且 3D 面板已订阅相关话题。 |
 | **WASM 解码器报错** | 部分浏览器在缺少 COOP/COEP 头时会阻止 `SharedArrayBuffer`。需要服务器返回 `Cross-Origin-Opener-Policy: same-origin` 和 `Cross-Origin-Embedder-Policy: credentialless`。 |
 | **远程文件启动慢** | 服务器可能不支持 `Range` 请求，导致需要完整下载才能开始播放。检查响应头中是否包含 `Accept-Ranges: bytes`。 |
+
+---
+
+## 7. Plot 字段路径
+
+Plot 曲线路径用于选择数值字段（如 `position[:]`、`motor_state_serial[:].q`、`imu_state.rpy[0]`），末尾可以追加 `@` 修饰符，按顺序生效：
+
+| 修饰符 | 作用 |
+|--------|------|
+| `@derivative` | 相邻消息间的变化率 |
+| `@abs`、`@rad2deg`、`@deg2rad`、`@sqrt` 等 | 逐值数学函数 |
+| `@sub(<路径>)` | 减去同一条消息中的另一个字段，如 `msgpack.retarget_done_ns@sub(msgpack.body_recv_ns)` |
+| `@ns2ms` | 纳秒转毫秒（Y 轴单位显示为 `ms`） |
+
+`$receive_ns` 表示消息的接收（录制）时间，单位纳秒。例如 `$receive_ns@sub(msgpack.source_ns)@ns2ms` 表示带墙钟时间戳的样本到达录制端所用的时间。对于 payload 为 msgpack 的 `std_msgs/ByteMultiArray` 话题，字段选择器会自动提供这类链路时延曲线，并且只在同一时钟域的时间戳之间配对。
