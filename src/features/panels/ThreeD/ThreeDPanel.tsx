@@ -15,6 +15,8 @@ import type {
   PointCloudParseResponse,
 } from './core/pointCloudWorkerProtocol';
 import { transformBvhPointToScene } from '@/shared/bvh/coordinates';
+import { xrobotHumanFrameToSkeleton } from './core/humanSkeleton';
+import { isByteArraySchema } from '@/infra/sources/msgpackPayload';
 import { getScenePanelThemeColors, type ScenePanelThemeColors } from '@/features/panels/common/scenePanelTheme';
 import {
   ThreeCanvas,
@@ -73,6 +75,9 @@ interface ThreeDPanelProps {
 /** URDF uses meters; grid is ~`DEFAULT_GRID_SIZE` scene units — scale root so a ~2m robot reads ~half the default grid. */
 const URDF_ROOT_SCALE_AT_DEFAULT_GRID = 5;
 const BVH_AUTOFIT_SAMPLE_INTERVAL = 8;
+/** Initial skeleton framing: largest body extent × margin, never tighter than the minimum (m). */
+const SKELETON_FRAME_MIN_SIZE = 1.7;
+const SKELETON_FRAME_MARGIN = 1.8;
 
 function toNanoSec(sec: number, nsec: number): bigint {
   return BigInt(sec) * 1_000_000_000n + BigInt(nsec);
@@ -266,11 +271,11 @@ const BvhSceneAutoFit: React.FC<{
     let shouldInvalidate = false;
     if (needsInitialFit) {
       fittedForResetRef.current = resetVersion;
-      const xySpan = Math.max(size.x, size.y, 2);
-      const gridSize = Math.max(DEFAULT_GRID_SIZE, Math.ceil(xySpan * 1.6));
-      const gridCenter = new THREE.Vector3(center.x, center.y, 0);
-      framePerspectiveCameraToGrid(camera, gridCenter, gridSize);
-      controls.target.copy(gridCenter);
+      // Frame the body itself (not the whole ground grid) so a ~1.7 m figure fills the view.
+      const frameSize = Math.max(size.x, size.y, size.z, SKELETON_FRAME_MIN_SIZE) * SKELETON_FRAME_MARGIN;
+      const target = new THREE.Vector3(center.x, center.y, center.z);
+      framePerspectiveCameraToGrid(camera, target, frameSize);
+      controls.target.copy(target);
       controls.update();
       shouldInvalidate = true;
     }
@@ -921,7 +926,7 @@ function jointBoxScale(
   const radius = jointRadius(joint.name);
   if (/Thumb|Index|Middle|Ring|Pinky|InHand/i.test(joint.name)) return [radius * 1.6, radius, radius * 1.1];
   if (/Hand|Foot/i.test(joint.name)) return [radius * 1.8, radius * 1.2, radius * 0.9];
-  if (/Shoulder|UpLeg|Hips/i.test(joint.name)) return [radius * 2.0, radius * 1.2, radius * 1.2];
+  if (/Shoulder|UpLeg|Hips|Pelvis/i.test(joint.name)) return [radius * 2.0, radius * 1.2, radius * 1.2];
   if (/Spine|Neck/i.test(joint.name)) return [radius * 1.4, radius * 1.2, radius * 1.8];
   return [radius * 1.6, radius * 1.1, radius * 1.2];
 }
@@ -930,7 +935,7 @@ function boneRadius(childName: string, parentName: string): number {
   const name = `${parentName}:${childName}`;
   if (/Thumb|Index|Middle|Ring|Pinky|InHand/i.test(name)) return 0.012;
   if (/Hand|Foot|Neck|Head/i.test(name)) return 0.03;
-  if (/Spine|Hips/i.test(name)) return 0.07;
+  if (/Spine|Hips|Pelvis/i.test(name)) return 0.07;
   return 0.045;
 }
 
@@ -938,11 +943,11 @@ function stickmanColor(childName: string, parentName = ''): string {
   const name = `${parentName}:${childName}`;
   if (/Head|Neck/i.test(name)) return '#f8c7a3';
   if (/Thumb|Index|Middle|Ring|Pinky|InHand/i.test(name)) return '#f6d365';
-  if (/Right.*(Shoulder|Arm|ForeArm|Hand)/i.test(name)) return '#60a5fa';
-  if (/Left.*(Shoulder|Arm|ForeArm|Hand)/i.test(name)) return '#f59e0b';
-  if (/Right.*(UpLeg|Leg|Foot)/i.test(name)) return '#f87171';
-  if (/Left.*(UpLeg|Leg|Foot)/i.test(name)) return '#34d399';
-  if (/Spine|Hips/i.test(name)) return '#a78bfa';
+  if (/Right.*(Collar|Shoulder|Arm|ForeArm|Elbow|Wrist|Hand)/i.test(name)) return '#60a5fa';
+  if (/Left.*(Collar|Shoulder|Arm|ForeArm|Elbow|Wrist|Hand)/i.test(name)) return '#f59e0b';
+  if (/Right.*(UpLeg|Leg|Hip|Knee|Ankle|Foot)/i.test(name)) return '#f87171';
+  if (/Left.*(UpLeg|Leg|Hip|Knee|Ankle|Foot)/i.test(name)) return '#34d399';
+  if (/Spine|Hips|Pelvis/i.test(name)) return '#a78bfa';
   return '#94a3b8';
 }
 
@@ -1489,10 +1494,16 @@ const Scene = ({
     () => topics.find((t: TopicInfo) => t.type.includes('PointCloud2'))?.name,
     [topics],
   );
-  const enabledTopicSettings = useMemo(
-    () => topicSettings.filter((entry) => entry.enabled && entry.topic.length > 0),
-    [topicSettings],
-  );
+  const enabledTopicSettings = useMemo((): ThreeDTopicSetting[] => {
+    if (topicSettings.length > 0) {
+      return topicSettings.filter((entry) => entry.enabled && entry.topic.length > 0);
+    }
+    // Nothing configured: probe msgpack byte-array topics in `auto` mode so a teleop
+    // human-body stream shows up as a skeleton without manual setup.
+    return topics
+      .filter((t: TopicInfo) => isByteArraySchema(t.type))
+      .map((t: TopicInfo) => ({ topic: t.name, enabled: true, renderMode: 'auto' as const, color: skeleton.color }));
+  }, [topicSettings, topics, skeleton.color]);
 
   // Pick the URDF topic to subscribe to. When `urdf.sourceType === 'topic'`:
   //   - an empty `urdf.topic` means auto-detect (legacy behaviour);
@@ -1524,15 +1535,23 @@ const Scene = ({
     [topics],
   );
 
+  // Topic whose skeleton drives camera auto-fit: a BVH stream, else a configured skeleton topic.
+  const skeletonFitTopic = useMemo(
+    () =>
+      bvhTopic ??
+      enabledTopicSettings.find((entry) => entry.renderMode === 'skeleton' || entry.renderMode === 'auto')?.topic,
+    [bvhTopic, enabledTopicSettings],
+  );
+
   useEffect(() => {
     setBvhGroundLayout(null);
   }, [resetVersion]);
 
   useEffect(() => {
-    if (!bvhTopic) {
+    if (!skeletonFitTopic) {
       setBvhGroundLayout(null);
     }
-  }, [bvhTopic]);
+  }, [skeletonFitTopic]);
 
   useEffect(() => {
     // `topic` flows through the message pipeline below; other sources feed
@@ -1716,6 +1735,19 @@ const Scene = ({
           }
           continue;
         }
+        const humanSkeleton =
+          mode === 'skeleton' || mode === 'auto' ? xrobotHumanFrameToSkeleton(payload) : undefined;
+        if (humanSkeleton) {
+          // xrobot frames are already meters in a Z-up world: skip the BVH unit/axis conversion.
+          nextSkeleton = extractBvhSkeletonPrimitives(humanSkeleton, {
+            ...skeleton,
+            scale: 1,
+            yUpToZUp: false,
+            flipY: false,
+            color: setting.color || skeleton.color,
+          });
+          continue;
+        }
         if (mode === 'skeleton') {
           nextSkeleton = extractBvhSkeletonPrimitives(payload, {
             ...skeleton,
@@ -1796,10 +1828,10 @@ const Scene = ({
         colors={colors}
         showGrid={showGrid}
         showAxes={showAxes}
-        bvhGroundLayout={bvhTopic ? bvhGroundLayout : null}
+        bvhGroundLayout={skeletonFitTopic ? bvhGroundLayout : null}
       />
       <BvhSceneAutoFit
-        bvhTopic={bvhTopic}
+        bvhTopic={skeletonFitTopic}
         skeletonPrimitives={skeletonPrimitives}
         resetVersion={resetVersion}
         onGroundLayout={handleBvhGroundLayout}
