@@ -9,6 +9,7 @@ import { MessageReader as ROS2MessageReader } from "@foxglove/rosmsg2-serializat
 import { toObject as flexbuffersToObject } from "flatbuffers/js/flexbuffers.js";
 import protobuf from "protobufjs";
 import "protobufjs/ext/descriptor";
+import { withMsgpackPayload } from "./msgpackPayload";
 import type { MessageDefinitionMap } from "./types";
 
 /** `protobufjs/ext/descriptor` augments Root at runtime; types omit the extension. */
@@ -103,7 +104,7 @@ export function parseChannel(
     const reader = new MessageReader(parsedDefinitions);
     return {
       datatypes: parsedDefinitionsToDatatypes(parsedDefinitions, channel.schema.name),
-      deserialize: (data) => reader.readMessage(data),
+      deserialize: withMsgpackPayload(channel.schema.name, (data) => reader.readMessage(data)),
     };
   }
 
@@ -133,7 +134,7 @@ export function parseChannel(
       const reader = new ROS2MessageReader(parsedDefinitions, { timeType: "sec,nsec" });
       return {
         datatypes: parsedDefinitionsToDatatypes(parsedDefinitions, channel.schema.name),
-        deserialize: (data) => reader.readMessage(data),
+        deserialize: withMsgpackPayload(channel.schema.name, (data) => reader.readMessage(data)),
       };
     }
   }
