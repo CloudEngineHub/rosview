@@ -233,4 +233,24 @@ describe('buildDefaultRosFoxgloveLayoutData', () => {
       '/CAM_FRONT_RIGHT/image_rect_compressed',
     ]);
   });
+
+  it('teleop RGB-D recording: one camera row, then 3D beside a LowState Plot', () => {
+    const topics: TopicInfo[] = [
+      { name: '/record/camera/head/rgb', type: 'sensor_msgs/msg/Image' },
+      { name: '/record/camera/head/depth', type: 'sensor_msgs/msg/Image' },
+      { name: '/record/camera/head/rgb/camera_info', type: 'sensor_msgs/msg/CameraInfo' },
+      { name: '/record/human/body', type: 'std_msgs/msg/ByteMultiArray' },
+      { name: '/record/revo2_hand/hand_left/joint_states', type: 'sensor_msgs/msg/JointState' },
+      { name: '/record/robot/state', type: 'booster_interface/msg/LowState' },
+      { name: '/record/robot/command', type: 'booster_interface/msg/LowCmd' },
+    ];
+    const root = buildDefaultRosFoxgloveLayoutData(topics).layout as FoxgloveMosaicSplit;
+    expect(root.direction).toBe('column');
+
+    const rowTypes = (node: FoxgloveMosaicNode) =>
+      collectMosaicPanelIds(node).map((id) => getPanelTypeFromId(id));
+    expect((root.first as FoxgloveMosaicSplit).direction).toBe('row');
+    expect(rowTypes(root.first)).toEqual(['Image', 'Image']);
+    expect(rowTypes(root.second)).toEqual(['3D', 'Plot']);
+  });
 });

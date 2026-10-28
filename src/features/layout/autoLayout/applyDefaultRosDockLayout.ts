@@ -22,6 +22,7 @@ import { heuristicAudioInfoTopics } from '@/features/panels/Audio/core/resolveAu
 import { getPanelDefinition } from '@/features/panels/registry';
 import { isAudioCommonInfoSchema, isJointStateSchema, isRawAudioSchema, isRosImageSchema, normalizeRosSchemaName } from '@/shared/ros/rosMessageTypes';
 import { pickDefaultRawMessagesTopic } from '@/features/layout/autoLayout/pickDefaultRawMessagesTopic';
+import { lookupPlotSchema } from '@/features/panels/Plot/schemaRegistry/plotSchemaRegistry';
 
 function imageTabTitle(topic: string): string {
   const parts = topic.split('/').filter(Boolean);
@@ -204,6 +205,14 @@ function isTransformTopicType(type: string): boolean {
   );
 }
 
+/**
+ * Robot low-level state (per-motor q/dq/τ + IMU) is the densest signal in a teleop
+ * recording; give it a Plot. The Plot panel auto-picks it via schema priority.
+ */
+function hasRobotLowLevelState(topics: ReadonlyArray<TopicInfo>): boolean {
+  return topics.some((topic) => lookupPlotSchema(topic.type)?.adapterId === 'lowState');
+}
+
 /** 3D is useful when the bag carries robot motion / TF — not for pure camera feeds. */
 function shouldIncludeThreeDPanel(topics: ReadonlyArray<TopicInfo>): boolean {
   if (isBvhOnlyDataset(topics)) {
@@ -253,10 +262,15 @@ export function buildDefaultRosFoxgloveLayoutData(
     for (const topic of depthRow) {
       if (topic) usedImageTopics.add(topic);
     }
-    const colorMosaic = rowMosaicFromPanelIds(colorImageIds);
-    const depthMosaic = rowMosaicFromPanelIds(depthImageIds);
-    if (colorMosaic) stackParts.push(colorMosaic);
-    if (depthMosaic) stackParts.push(depthMosaic);
+    if (colorImageIds.length === 1 && depthImageIds.length === 1) {
+      // A single RGB-D camera: side by side instead of two full-width rows.
+      stackParts.push(rowMosaicFromPanelIds([...colorImageIds, ...depthImageIds])!);
+    } else {
+      const colorMosaic = rowMosaicFromPanelIds(colorImageIds);
+      const depthMosaic = rowMosaicFromPanelIds(depthImageIds);
+      if (colorMosaic) stackParts.push(colorMosaic);
+      if (depthMosaic) stackParts.push(depthMosaic);
+    }
   } else if (pickedImageTopics.length > 0) {
     for (const row of buildImageRows(pickedImageTopics)) {
       const imageIds = appendImagePanelsForRow(row, configById);
@@ -282,6 +296,7 @@ export function buildDefaultRosFoxgloveLayoutData(
   } else {
     const poseTopics = collectTopicsForPanelSchemas(topics, 'Pose');
     const includeThreeD = shouldIncludeThreeDPanel(topics);
+    const motionRow: string[] = [];
 
     if (poseTopics.length > 0) {
       const poseId = createPanelInstanceId('Pose');
@@ -292,22 +307,20 @@ export function buildDefaultRosFoxgloveLayoutData(
           enabled: true,
         })),
       };
-      if (includeThreeD) {
-        const threeDId = createPanelInstanceId('3D');
-        configById[threeDId] = {};
-        stackParts.push({
-          direction: 'row',
-          first: poseId,
-          second: threeDId,
-        });
-      } else {
-        stackParts.push(poseId);
-      }
-    } else if (includeThreeD) {
+      motionRow.push(poseId);
+    }
+    if (includeThreeD) {
       const threeDId = createPanelInstanceId('3D');
       configById[threeDId] = {};
-      stackParts.push(threeDId);
+      motionRow.push(threeDId);
     }
+    if (hasRobotLowLevelState(topics)) {
+      const plotId = createPanelInstanceId('Plot');
+      configById[plotId] = {};
+      motionRow.push(plotId);
+    }
+    const motionMosaic = rowMosaicFromPanelIds(motionRow);
+    if (motionMosaic) stackParts.push(motionMosaic);
   }
 
   if (stackParts.length === 0 && !isBvhOnlyDataset(topics) && !hdf5Dataset) {
