@@ -14,7 +14,9 @@ export type PlotAdapterId =
   | 'pose'
   | 'wrench'
   | 'odometry'
-  | 'tfMessage';
+  | 'tfMessage'
+  | 'lowState'
+  | 'lowCmd';
 
 export interface PlotSchemaEntry {
   /** Normalized suffix, e.g. sensor_msgs/jointstate */

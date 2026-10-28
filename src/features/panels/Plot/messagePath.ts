@@ -6,6 +6,14 @@ export interface ExtractedPlotValue {
   value: number;
 }
 
+/** Per-message values that are not part of the payload (e.g. the MCAP log time). */
+export interface PlotPathContext {
+  receiveTime?: Time;
+}
+
+/** Virtual field: the message receive (log) time in nanoseconds, e.g. `$receive_ns@sub(msgpack.source_ns)`. */
+export const RECEIVE_NS_PATH = '$receive_ns';
+
 export interface ParsedPlotPath {
   sourcePath: string;
   modifiers: string[];
@@ -242,10 +250,40 @@ function toNumericValue(value: unknown): number | undefined {
   return undefined;
 }
 
-function applyModifiers(value: number, modifiers: string[]): number | undefined {
+const SUB_MODIFIER_RE = /^sub\((.+)\)$/;
+
+function receiveTimeNs(context: PlotPathContext | undefined): number | undefined {
+  const time = context?.receiveTime;
+  return time ? time.sec * 1e9 + time.nsec : undefined;
+}
+
+/** First numeric value at `path` (no modifiers), or the virtual receive time. */
+function readScalarAt(message: unknown, path: string, context: PlotPathContext | undefined): number | undefined {
+  if (path === RECEIVE_NS_PATH) return receiveTimeNs(context);
+  const [first] = extractSinglePlotPathValues(message, path, context);
+  return first?.value;
+}
+
+function applyModifiers(
+  value: number,
+  modifiers: string[],
+  message: unknown,
+  context: PlotPathContext | undefined,
+): number | undefined {
   let next = value;
   for (const modifier of modifiers) {
     if (modifier === 'derivative') continue;
+    if (modifier === 'ns2ms') {
+      next /= 1e6;
+      continue;
+    }
+    const sub = SUB_MODIFIER_RE.exec(modifier);
+    if (sub) {
+      const other = readScalarAt(message, sub[1].trim(), context);
+      if (other == null) return undefined;
+      next -= other;
+      continue;
+    }
     const fn = mathFunctions[modifier];
     if (!fn) return undefined;
     next = fn(next);
@@ -286,9 +324,18 @@ export function isArrayLikePlotPath(path: string): boolean {
   return false;
 }
 
-function extractSinglePlotPathValues(message: unknown, path: string): ExtractedPlotValue[] {
+function extractSinglePlotPathValues(
+  message: unknown,
+  path: string,
+  context: PlotPathContext | undefined,
+): ExtractedPlotValue[] {
   const parsed = parsePlotPath(path);
   if (!parsed.sourcePath) return [];
+  if (parsed.sourcePath === RECEIVE_NS_PATH) {
+    const receiveNs = receiveTimeNs(context);
+    const value = receiveNs == null ? undefined : applyModifiers(receiveNs, parsed.modifiers, message, context);
+    return value == null ? [] : [{ key: RECEIVE_NS_PATH, label: RECEIVE_NS_PATH, value }];
+  }
   let items: Array<{ key: string; label: string; value: unknown }> = [{ key: '', label: '', value: message }];
   const segments = parseSegments(parsed.sourcePath);
 
@@ -311,21 +358,25 @@ function extractSinglePlotPathValues(message: unknown, path: string): ExtractedP
   return items.flatMap((item) => {
     const numeric = toNumericValue(item.value);
     if (numeric == null) return [];
-    const value = applyModifiers(numeric, parsed.modifiers);
+    const value = applyModifiers(numeric, parsed.modifiers, message, context);
     return value == null ? [] : [{ key: item.key, label: item.label || item.key, value }];
   });
 }
 
-export function extractPlotPathValues(message: unknown, path: string): ExtractedPlotValue[] {
+export function extractPlotPathValues(
+  message: unknown,
+  path: string,
+  context?: PlotPathContext,
+): ExtractedPlotValue[] {
   const paths = splitPlotPathList(path);
   if (paths.length <= 1) {
-    return extractSinglePlotPathValues(message, paths[0] ?? path);
+    return extractSinglePlotPathValues(message, paths[0] ?? path, context);
   }
 
   const out: ExtractedPlotValue[] = [];
   const seen = new Set<string>();
   for (const subPath of paths) {
-    for (const item of extractSinglePlotPathValues(message, subPath)) {
+    for (const item of extractSinglePlotPathValues(message, subPath, context)) {
       const dedupeKey = `${subPath}|${item.key}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);

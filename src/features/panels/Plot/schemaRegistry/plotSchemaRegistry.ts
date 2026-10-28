@@ -57,6 +57,10 @@ const ENTRIES: PlotSchemaEntry[] = [
   { schemaSuffix: 'nav_msgs/odometry', adapterId: 'odometry', defaultPriority: 80 },
   // tf2_msgs
   { schemaSuffix: 'tf2_msgs/tfmessage', adapterId: 'tfMessage', defaultPriority: 20 },
+  // robot low-level state / command (per-motor arrays + IMU)
+  // Above JointState: whole-body motor state outranks e.g. per-hand joint_states.
+  { schemaSuffix: 'booster_interface/lowstate', adapterId: 'lowState', defaultPriority: 105 },
+  { schemaSuffix: 'booster_interface/lowcmd', adapterId: 'lowCmd', defaultPriority: 60 },
 ];
 
 const REGISTRY = new Map<string, PlotSchemaEntry>(
