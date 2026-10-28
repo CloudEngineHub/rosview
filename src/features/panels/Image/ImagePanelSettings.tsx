@@ -23,7 +23,7 @@ const DEPTH_ENCODINGS = new Set(['mono16', '16uc1', '32fc1']);
  * Raw encodings that have direct colour in the pixel data — no colormap needed,
  * but showing the Color section still makes sense for the `rgba-fields` mode.
  */
-const COLOUR_ENCODINGS = new Set(['rgb8', 'bgr8', 'rgba8', 'bgra8', 'mono8', '8uc1']);
+const COLOUR_ENCODINGS = new Set(['rgb8', 'bgr8', 'rgba8', 'bgra8', 'mono8', '8uc1', 'nv12', 'nv21']);
 
 /** Slider bounds per depth encoding. */
 function depthSliderBounds(encoding: string): { min: number; max: number } {

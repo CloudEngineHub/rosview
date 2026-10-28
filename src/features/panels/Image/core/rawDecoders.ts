@@ -4,7 +4,11 @@ import {
   type ColorRGBA,
   type RawImageDecodeOptions,
 } from './imageColorMode';
-import { resolveDepthColorRange } from './depthColorDefaults';
+import {
+  DEFAULT_DEPTH_16UC1_COLOR_MAX,
+  DEFAULT_DEPTH_16UC1_COLOR_MIN,
+  resolveDepthColorRange,
+} from './depthColorDefaults';
 
 export interface RawImageLike {
   encoding: string;
@@ -82,6 +86,47 @@ function decodeYUYV(
       const v = input[off + 3] - 128;
       yuvToRGBA8(y1, u, y2, v, outIdx, output);
       outIdx += 8;
+    }
+  }
+}
+
+/**
+ * Semi-planar 4:2:0: a full-resolution Y plane followed by a half-height plane of
+ * interleaved chroma pairs (UV for NV12, VU for NV21), both using `step` as row stride.
+ */
+function decodeNV12(
+  input: Uint8Array,
+  width: number,
+  height: number,
+  step: number,
+  output: Uint8ClampedArray,
+  swapUV: boolean,
+): void {
+  const name = swapUV ? 'NV21' : 'NV12';
+  if (step < width) {
+    throw new Error(`${name} image row step (${step}) must be at least width (${width})`);
+  }
+  const uvBase = step * height;
+  const expected = uvBase + step * Math.ceil(height / 2);
+  if (input.length < expected) {
+    throw new Error(`${name} image data (${input.length} bytes) is shorter than expected (${expected})`);
+  }
+  const uOffset = swapUV ? 1 : 0;
+  const vOffset = swapUV ? 0 : 1;
+
+  let outIdx = 0;
+  for (let row = 0; row < height; row++) {
+    const yRow = row * step;
+    const uvRow = uvBase + (row >> 1) * step;
+    for (let col = 0; col < width; col++) {
+      const uvIdx = uvRow + (col & ~1);
+      const y = input[yRow + col];
+      const u = input[uvIdx + uOffset] - 128;
+      const v = input[uvIdx + vOffset] - 128;
+      output[outIdx++] = y + Math.trunc((1403 * v) / 1000);
+      output[outIdx++] = y - Math.trunc((344 * u) / 1000) - Math.trunc((714 * v) / 1000);
+      output[outIdx++] = y + Math.trunc((1770 * u) / 1000);
+      output[outIdx++] = 255;
     }
   }
 }
@@ -195,7 +240,11 @@ function decodeFloat1c(
     throw new Error(`Float image row step (${step}) must be at least 4*width (${width * 4})`);
   }
 
-  const { minValue: minV, maxValue: maxV } = resolveDepthColorRange('32fc1', colorOpts);
+  const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
+  const { minValue: minV, maxValue: maxV } =
+    colorOpts.minValue == null && colorOpts.maxValue == null && isMillimeterFloatDepth(view, width, height, step, isBigEndian)
+      ? { minValue: DEFAULT_DEPTH_16UC1_COLOR_MIN, maxValue: DEFAULT_DEPTH_16UC1_COLOR_MAX }
+      : resolveDepthColorRange('32fc1', colorOpts);
   let converter;
   try {
     converter = getColorConverter(colorOpts, minV, maxV);
@@ -208,7 +257,6 @@ function decodeFloat1c(
   }
   const px: ColorRGBA = { r: 0, g: 0, b: 0, a: 0 };
 
-  const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
   let outIdx = 0;
   for (let row = 0; row < height; row++) {
     const rowStart = row * step;
@@ -221,6 +269,36 @@ function decodeFloat1c(
       output[outIdx++] = Math.round(clamp01(px.a) * 255);
     }
   }
+}
+
+/** Median valid depth above this is taken as millimeters (no indoor scene sits 50 m away). */
+const FLOAT_DEPTH_MM_MEDIAN_THRESHOLD = 50;
+const FLOAT_DEPTH_SAMPLE_COUNT = 1024;
+
+/**
+ * REP-117 says 32FC1 depth is meters, but some drivers publish millimeters as float.
+ * Sample the frame and compare the median of valid (finite, positive) depths.
+ */
+function isMillimeterFloatDepth(
+  view: DataView,
+  width: number,
+  height: number,
+  step: number,
+  isBigEndian: boolean,
+): boolean {
+  const total = width * height;
+  if (total === 0) return false;
+  const stride = Math.max(1, Math.floor(total / FLOAT_DEPTH_SAMPLE_COUNT));
+  const samples: number[] = [];
+  for (let i = 0; i < total; i += stride) {
+    const row = Math.floor(i / width);
+    const col = i - row * width;
+    const value = view.getFloat32(row * step + col * 4, !isBigEndian);
+    if (Number.isFinite(value) && value > 0) samples.push(value);
+  }
+  if (samples.length === 0) return false;
+  samples.sort((a, b) => a - b);
+  return samples[samples.length >> 1] > FLOAT_DEPTH_MM_MEDIAN_THRESHOLD;
 }
 
 function clamp01(v: number): number {
@@ -419,6 +497,12 @@ export function decodeRawImage(
     case 'yuv422_yuy2':
       decodeYUYV(data, width, height, step, output);
       return;
+    case 'nv12':
+      decodeNV12(data, width, height, step, output, false);
+      return;
+    case 'nv21':
+      decodeNV12(data, width, height, step, output, true);
+      return;
     case 'bayer_rggb8':
       decodeBayerRGGB8(data, width, height, step, output);
       return;
@@ -458,6 +542,8 @@ function inferStep(image: RawImageLike): number {
       return image.width * 2;
     case 'mono8':
     case '8uc1':
+    case 'nv12':
+    case 'nv21':
     case 'bayer_rggb8':
     case 'bayer_bggr8':
     case 'bayer_gbrg8':
