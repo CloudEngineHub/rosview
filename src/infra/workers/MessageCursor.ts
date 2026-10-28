@@ -271,7 +271,7 @@ export class MessageCursor implements IMessageCursor<unknown> {
   private _transferMessage(message: MessageEvent): IteratorResult<MessageEvent> {
     message = this._prepareMessageForTransport(message);
     if (this._transportConfig.mode === "transfer") {
-      const transferables = workerPerf.time("cursor.collectTransferables", () => collectTransferables(message));
+      const transferables = workerPerf.time("cursor.collectTransferables", () => collectTransferables([message]));
       if (transferables.length > 0) {
         return Comlink.transfer(
           { done: false, value: message },
